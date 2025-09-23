@@ -31,43 +31,6 @@ export function MeetingRoom({ meetingData }) {
   const [participants, setParticipants] = useState([]);
   const [showParticipants, setShowParticipants] = useState(false);
 
-  // Component for rendering video tiles
-  const VideoTile = ({ tileId, attendeeId, name, isLocal = false, muted = false, videoOn = true }) => {
-    const videoRef = useRef(null);
-
-    useEffect(() => {
-      if (videoRef.current && meetingSessionRef.current && tileId) {
-        try {
-          meetingSessionRef.current.audioVideo.bindVideoElement(tileId, videoRef.current);
-        } catch (bindError) {
-          console.error(`Failed to bind video for tile ${tileId}:`, bindError);
-          setError(`Failed to display video for ${name}`);
-        }
-      }
-    }, [tileId, name]);
-
-    return (
-      <div className="relative aspect-video bg-gray-100 rounded-lg overflow-hidden border border-gray-300">
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted={isLocal}
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute bottom-2 left-2 bg-gray-800 bg-opacity-70 text-white px-3 py-1 rounded-lg text-sm">
-          {name} {muted && <MicOff size={16} className="inline ml-1" />}
-          {!videoOn && <VideoOff size={16} className="inline ml-1" />}
-        </div>
-        {!videoOn && (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-200 text-gray-600">
-            Camera Off
-          </div>
-        )}
-      </div>
-    );
-  };
-
   useEffect(() => {
     async function initSession() {
       if (!Meeting || !Attendee) {
@@ -90,6 +53,7 @@ export function MeetingRoom({ meetingData }) {
               tileState.boundExternalUserId?.split("#")[1] || `Participant ${tileState.tileId}`;
 
             if (tileState.localTile) {
+              // Local video tile
               if (localVideoEl.current) {
                 try {
                   meetingSession.audioVideo.bindVideoElement(tileState.tileId, localVideoEl.current);
@@ -99,17 +63,63 @@ export function MeetingRoom({ meetingData }) {
                   setError("Failed to display your video. Check camera permissions.");
                 }
               }
-              setParticipants((prev) =>
-                prev.map((p) =>
-                  p.attendeeId === Attendee.AttendeeId ? { ...p, videoOn: true } : p
-                )
-              );
             } else {
-              // Remote video tile
+              // Remote video tile - create and bind immediately
+              if (videoTilesRef.current.has(tileState.tileId)) {
+                return;
+              }
+
+              // Store the tile mapping for later use
+              videoTilesRef.current.set(tileState.tileId, { 
+                attendeeId: tileState.boundAttendeeId,
+                tileId: tileState.tileId 
+              });
+
+              // Create video element and bind it immediately
+              const videoElement = document.createElement("video");
+              videoElement.autoPlay = true;
+              videoElement.playsInline = true;
+              videoElement.className = "w-full h-full object-cover bg-gray-700";
+              videoElement.id = `remote-video-${tileState.tileId}`;
+
+              try {
+                // Bind the video element to this tile
+                meetingSession.audioVideo.bindVideoElement(tileState.tileId, videoElement);
+
+                // Create wrapper and add to container
+                const wrapper = document.createElement("div");
+                wrapper.className = "relative aspect-video bg-gray-100 rounded-lg overflow-hidden border border-gray-300";
+                wrapper.id = `wrapper-${tileState.tileId}`;
+                
+                const label = document.createElement("div");
+                label.className = "absolute bottom-2 left-2 bg-gray-800 bg-opacity-70 text-white px-3 py-1 rounded-lg text-sm";
+                label.textContent = participantName;
+
+                wrapper.appendChild(videoElement);
+                wrapper.appendChild(label);
+
+                if (containerRef.current) {
+                  containerRef.current.appendChild(wrapper);
+                }
+
+              } catch (bindError) {
+                console.error("Failed to bind remote video:", bindError);
+                setError(`Failed to display video for ${participantName}`);
+                videoTilesRef.current.delete(tileState.tileId);
+                return;
+              }
+
+              // Update participants state - ONLY update video status for existing participants
               setParticipants((prev) => {
                 const existing = prev.find((p) => p.attendeeId === tileState.boundAttendeeId);
-                if (!existing && containerRef.current) {
-                  videoTilesRef.current.set(tileState.tileId, { attendeeId: tileState.boundAttendeeId });
+                if (existing) {
+                  return prev.map((p) =>
+                    p.attendeeId === tileState.boundAttendeeId 
+                      ? { ...p, videoOn: true, tileId: tileState.tileId } 
+                      : p
+                  );
+                } else {
+                  // Add participant with video on (fallback)
                   return [
                     ...prev,
                     {
@@ -117,24 +127,35 @@ export function MeetingRoom({ meetingData }) {
                       name: participantName,
                       videoOn: true,
                       muted: true,
+                      tileId: tileState.tileId,
+                      isLocal: false,
                     },
                   ];
                 }
-                return prev.map((p) =>
-                  p.attendeeId === tileState.boundAttendeeId ? { ...p, videoOn: true } : p
-                );
               });
             }
           },
 
           videoTileWasRemoved: (tileId) => {
-            setParticipants((prev) =>
-              prev.map((p) =>
-                p.attendeeId === videoTilesRef.current.get(tileId)?.attendeeId
-                  ? { ...p, videoOn: false }
-                  : p
-              )
-            );
+            // Remove from DOM
+            const wrapper = document.getElementById(`wrapper-${tileId}`);
+            if (wrapper) {
+              wrapper.remove();
+            }
+
+            // Update participants state - just turn off video and clear tile ID, don't remove participant
+            const tileInfo = videoTilesRef.current.get(tileId);
+            if (tileInfo) {
+              setParticipants((prev) =>
+                prev.map((p) =>
+                  p.attendeeId === tileInfo.attendeeId 
+                    ? { ...p, videoOn: false, tileId: null } 
+                    : p
+                )
+              );
+            }
+
+            // Clean up tile mapping
             videoTilesRef.current.delete(tileId);
           },
 
@@ -164,21 +185,28 @@ export function MeetingRoom({ meetingData }) {
           setParticipants((prev) => {
             if (present) {
               const existing = prev.find((p) => p.attendeeId === attendeeId);
-              if (!existing) {
-                return [
-                  ...prev,
-                  {
-                    attendeeId,
-                    name: attendeeId === Attendee.AttendeeId ? "You" : `Participant ${attendeeId}`,
-                    videoOn: false,
-                    muted: true,
-                    isLocal: attendeeId === Attendee.AttendeeId,
-                  },
-                ];
+              if (existing) {
+                return prev; // Don't add duplicates, keep existing state
               }
-              return prev;
+              const participantName = attendeeId === Attendee.AttendeeId 
+                ? (Attendee.ExternalUserId?.split("#")[1] || "You")
+                : `Participant ${attendeeId.slice(-4)}`;
+              
+              return [
+                ...prev,
+                {
+                  attendeeId,
+                  name: participantName,
+                  videoOn: false, // Start with video off, will be updated by video tile observer
+                  muted: true,
+                  isLocal: attendeeId === Attendee.AttendeeId,
+                  tileId: null,
+                },
+              ];
+            } else {
+              // Only remove participant if they actually left the meeting (not just turned off camera)
+              return prev.filter((p) => p.attendeeId !== attendeeId);
             }
-            return prev.filter((p) => p.attendeeId !== attendeeId);
           });
         });
 
@@ -289,23 +317,6 @@ export function MeetingRoom({ meetingData }) {
 
       await ms.audioVideo.start();
       ms.audioVideo.startLocalVideoTile();
-
-      setParticipants((prev) => {
-        const existing = prev.find((p) => p.attendeeId === Attendee.AttendeeId);
-        if (!existing) {
-          return [
-            ...prev,
-            {
-              attendeeId: Attendee.AttendeeId,
-              name: Attendee.ExternalUserId?.split("#")[1] || "You",
-              videoOn: true,
-              muted: false,
-              isLocal: true,
-            },
-          ];
-        }
-        return prev;
-      });
     } catch (error) {
       console.error("Error joining meeting:", error);
       setError(`Failed to join meeting: ${error.message || "Unknown error"}`);
@@ -321,10 +332,8 @@ export function MeetingRoom({ meetingData }) {
     try {
       if (muted) {
         ms.audioVideo.realtimeUnmuteLocalAudio();
-        console.log("Unmuted microphone");
       } else {
         ms.audioVideo.realtimeMuteLocalAudio();
-        console.log("Muted microphone");
       }
     } catch (error) {
       console.error("Error toggling mic:", error);
@@ -397,11 +406,21 @@ export function MeetingRoom({ meetingData }) {
       ms.audioVideo.stop();
       ms.audioVideo.stopLocalVideoTile();
       ms.audioVideo.stopContentShare();
+      
+      // Clean up all remote video elements
+      videoTilesRef.current.forEach((tileInfo, tileId) => {
+        const wrapper = document.getElementById(`wrapper-${tileId}`);
+        if (wrapper) {
+          wrapper.remove();
+        }
+      });
+      
       if (audioElementRef.current) {
         ms.audioVideo.unbindAudioElement();
         audioElementRef.current.remove();
         audioElementRef.current = null;
       }
+      
       videoTilesRef.current.clear();
       setParticipants([]);
       setError(null);
@@ -470,21 +489,9 @@ export function MeetingRoom({ meetingData }) {
                 )}
               </div>
 
-              {/* Remote Videos */}
-              {participants
-                .filter((p) => !p.isLocal && p.videoOn)
-                .map((participant) => (
-                  <VideoTile
-                    key={participant.attendeeId}
-                    tileId={Array.from(videoTilesRef.current.entries())
-                      .find(([_, v]) => v.attendeeId === participant.attendeeId)?.[0]}
-                    attendeeId={participant.attendeeId}
-                    name={participant.name}
-                    muted={participant.muted}
-                    videoOn={participant.videoOn}
-                  />
-                ))}
-
+              {/* Remote Videos will be added here dynamically by the observer */}
+              
+              {/* Show message when no remote participants */}
               {videoTilesRef.current.size === 0 && joined && (
                 <div className="col-span-full flex items-center justify-center h-64 text-gray-600">
                   No other participants in the meeting
@@ -598,24 +605,6 @@ export function MeetingRoom({ meetingData }) {
                 aria-label={sharing ? "Stop screen sharing" : "Start screen sharing"}
               >
                 <MonitorUp size={24} />
-              </button>
-              <button
-                onClick={() => {
-                  console.log("=== DEBUG INFO ===");
-                  console.log("Camera on:", cameraOn);
-                  console.log("Video tiles:", videoTilesRef.current);
-                  console.log("Local video element:", localVideoEl.current);
-                  console.log("Meeting session:", !!meetingSessionRef.current);
-                  console.log("Selected video device:", selectedVideoIn);
-                  console.log("Available devices:", devices);
-                  console.log("Participants:", participants);
-                  console.log("==================");
-                }}
-                className="p-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg text-xs"
-                title="Debug Info"
-                aria-label="Log debug information"
-              >
-                Debug
               </button>
               <button
                 onClick={leaveMeeting}
