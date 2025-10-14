@@ -31,9 +31,17 @@ export async function POST(req) {
     const meeting = await client.send(command);
     console.log('Meeting created successfully:', meeting.Meeting.MeetingId);
     
+    // Create unique external user ID to prevent conflicts
+    const uniqueUserId = `${attendeeName || "Attendee"}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
     const attendeeCommand = new CreateAttendeeCommand({
       MeetingId: meeting.Meeting.MeetingId,
-      ExternalUserId: attendeeName || "Attendee"
+      ExternalUserId: uniqueUserId,
+      Capabilities: {
+        Audio: "SendReceive",
+        Video: "SendReceive",
+        Content: "SendReceive"
+      }
     });
     
     const attendee = await client.send(attendeeCommand);
