@@ -8,7 +8,7 @@ const client = new ChimeSDKMeetingsClient({ region: process.env.AWS_REGION });
 
 export async function POST(req) {
   try {
-    const { meetingId, attendeeName } = await req.json();
+    const { meetingId, attendeeName } = await req?.json();
     
     const getMeetingCommand = new GetMeetingCommand({ MeetingId: meetingId });
     const meetingData = await client.send(getMeetingCommand);
@@ -29,11 +29,10 @@ export async function POST(req) {
     const attendee = await client.send(attendeeCommand);
     
     return Response.json({
-      Meeting: meetingData.Meeting,
-      Attendee: attendee.Attendee
+      Meeting: meetingData?.Meeting,
+      Attendee: attendee?.Attendee
     });
   } catch (err) {
-    console.error(err);
-    return Response.json({ error: err.message }, { status: 500 });
+    return Response.json({ error: err?.message }, { status: 500 });
   }
 }

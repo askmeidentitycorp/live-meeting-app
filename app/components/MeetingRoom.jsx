@@ -33,7 +33,7 @@ export function MeetingRoom({ meetingData }) {
 
   // Meeting state
   const [isConnected, setIsConnected] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
+  const [isMuted, setIsMuted] = useState(false); // Start unmuted
   const [isVideoEnabled, setIsVideoEnabled] = useState(false);
   const [screenShareState, setScreenShareState] = useState({
     isSharing: false,
@@ -49,12 +49,17 @@ export function MeetingRoom({ meetingData }) {
   const [connectionError, setConnectionError] = useState(null);
   const [isLeavingMeeting, setIsLeavingMeeting] = useState(false);
 
+  // Extract local user name and host status from ExternalUserId
+  const localUserName = Attendee?.ExternalUserId ? Attendee.ExternalUserId.split('-')[1] : 'You';
+  const isHost = Attendee?.ExternalUserId?.startsWith('HOST-') || meetingData?.isHost || false;
+
   // Device and participant state
   const [devices, setDevices] = useState({ audioInputs: [], videoInputs: [] });
   const [selectedAudioInput, setSelectedAudioInput] = useState("");
   const [selectedVideoInput, setSelectedVideoInput] = useState("");
   const [participants, setParticipants] = useState([]);
   const [showParticipantsList, setShowParticipantsList] = useState(false);
+  const [attendeeRoster, setAttendeeRoster] = useState(new Map()); // Store attendeeId -> externalUserId mapping
 
   // Initialize meeting session
   useEffect(() => {
@@ -92,20 +97,16 @@ export function MeetingRoom({ meetingData }) {
 
         const meetingObserver = {
           videoTileDidUpdate: (tileState) => {
-            console.log("Video tile updated:", tileState);
-
-            if (tileState.localTile && !tileState.isContent) {
+            if (tileState?.localTile && !tileState?.isContent) {
               // Handle local camera video
-              if (localVideoRef.current) {
-                session.audioVideo.bindVideoElement(tileState.tileId, localVideoRef.current);
+              if (localVideoRef?.current) {
+                session?.audioVideo?.bindVideoElement(tileState.tileId, localVideoRef.current);
               }
-            } else if (tileState.isContent) {
+            } else if (tileState?.isContent) {
               // Handle content share (screen share)
-              console.log("Content share tile detected:", tileState.tileId);
-              
-              const contentAttendeeId = tileState.boundAttendeeId || '';
+              const contentAttendeeId = tileState?.boundAttendeeId || '';
               const baseAttendeeId = contentAttendeeId.split('#')[0];
-              const isMyShare = baseAttendeeId === Attendee.AttendeeId;
+              const isMyShare = baseAttendeeId === Attendee?.AttendeeId;
               
               // Update state with tile info
               setScreenShareState(prev => ({
@@ -118,12 +119,11 @@ export function MeetingRoom({ meetingData }) {
               
               // Bind video element
               setTimeout(() => {
-                if (contentShareVideoRef.current && meetingSessionRef.current) {
+                if (contentShareVideoRef?.current && meetingSessionRef?.current) {
                   try {
                     meetingSessionRef.current.audioVideo.bindVideoElement(tileState.tileId, contentShareVideoRef.current);
-                    console.log("Screen share video bound");
                   } catch (error) {
-                    console.error("Failed to bind screen share video:", error);
+                    // Silent error handling
                   }
                 }
               }, 100);
@@ -134,18 +134,15 @@ export function MeetingRoom({ meetingData }) {
           },
 
           videoTileWasRemoved: (tileId) => {
-            console.log("Video tile removed:", tileId);
             handleVideoTileRemoval(tileId);
           },
 
           audioVideoDidStart: () => {
-            console.log("Meeting started successfully");
             setIsConnected(true);
             setConnectionError(null);
           },
 
           audioVideoDidStop: async (sessionStatus) => {
-            console.log("Meeting stopped with status:", sessionStatus);
             setIsConnected(false);
 
             // Extract the actual status code number
@@ -153,9 +150,9 @@ export function MeetingRoom({ meetingData }) {
             let reason = null;
 
             if (sessionStatus) {
-              if (typeof sessionStatus.statusCode === 'function') {
+              if (typeof sessionStatus?.statusCode === 'function') {
                 statusCode = sessionStatus.statusCode();
-              } else if (typeof sessionStatus.statusCode === 'number') {
+              } else if (typeof sessionStatus?.statusCode === 'number') {
                 statusCode = sessionStatus.statusCode;
               } else if (typeof sessionStatus === 'number') {
                 statusCode = sessionStatus;
@@ -165,17 +162,13 @@ export function MeetingRoom({ meetingData }) {
               reason = sessionStatus?.reason || sessionStatus?.toString();
             }
 
-            console.log("Session ended - Status Code:", statusCode, "Reason:", reason);
-
             // Don't show error messages if user is voluntarily leaving
             if (isLeavingMeeting) {
-              console.log("Meeting ended by user action");
               return;
             }
 
             // Handle SignalingChannelClosedUnexpectedly specifically
             if (reason === "SignalingChannelClosedUnexpectedly" || statusCode === 7) {
-              console.warn("Signaling channel closed unexpectedly - connection lost");
               setConnectionError("Connection lost. This can happen due to network issues or server problems. Please try rejoining.");
             }
             // Handle other specific errors
@@ -183,7 +176,6 @@ export function MeetingRoom({ meetingData }) {
               statusCode === 11 ||
               sessionStatus?.reason === "AudioJoinedFromAnotherDevice") {
 
-              console.warn("Session disconnected due to concurrent session or duplicate user");
               setConnectionError("Connection interrupted. This may happen when multiple people join simultaneously. Please try rejoining.");
             } else if (statusCode && statusCode !== 1) {
               // Only show error for non-normal endings (status code 1 is normal)
@@ -197,7 +189,6 @@ export function MeetingRoom({ meetingData }) {
           },
 
           audioVideoDidStartConnecting: (reconnecting) => {
-            console.log(reconnecting ? "Reconnecting to meeting..." : "Connecting to meeting...");
             if (reconnecting) {
               setConnectionError("Connection lost. Attempting to reconnect...");
             } else {
@@ -207,8 +198,6 @@ export function MeetingRoom({ meetingData }) {
           },
 
           connectionDidFail: (reason) => {
-            console.error("Connection failed with reason:", reason);
-
             // Handle specific connection failure reasons
             if (reason?.includes("SignalingChannelClosedUnexpectedly")) {
               setConnectionError("Connection failed due to network issues. Please check your internet connection and try again.");
@@ -224,23 +213,18 @@ export function MeetingRoom({ meetingData }) {
           },
 
           connectionDidSuggestStopVideo: () => {
-            console.warn("Connection suggests stopping video");
             // Optionally handle poor connection by stopping video
           },
 
           connectionHealthDidChange: (connectionHealthData) => {
-            console.log("Connection health changed:", connectionHealthData);
-
             // Monitor connection quality and provide user feedback
-            if (connectionHealthData.connectionStartedTimestampMs > 0) {
+            if (connectionHealthData?.connectionStartedTimestampMs > 0) {
               const connectionDuration = Date.now() - connectionHealthData.connectionStartedTimestampMs;
 
               // If connection has been poor for more than 10 seconds
-              if (connectionHealthData.consecutiveMissedPongs > 3) {
-                console.warn("Poor connection detected - multiple missed pongs");
+              if (connectionHealthData?.consecutiveMissedPongs > 3) {
                 setConnectionError("Poor network connection detected. Audio/video quality may be affected.");
-              } else if (connectionHealthData.consecutiveStatsWithNoPackets > 5) {
-                console.warn("No packets received - connection issues");
+              } else if (connectionHealthData?.consecutiveStatsWithNoPackets > 5) {
                 setConnectionError("Connection issues detected. Trying to maintain connection...");
               } else {
                 // Clear connection error if health improves
@@ -255,16 +239,13 @@ export function MeetingRoom({ meetingData }) {
         // Content share observer - simplified
         const contentShareObserver = {
           contentShareDidStart: () => {
-            console.log("Content share started (observer)");
             // Don't update state here - let the toggle function handle it
             // This prevents race conditions between user action and observer
           },
           
           contentShareDidStop: () => {
-            console.log("Content share stopped (observer)");
-            
             // Always clean up video element
-            if (contentShareVideoRef.current) {
+            if (contentShareVideoRef?.current) {
               contentShareVideoRef.current.srcObject = null;
               contentShareVideoRef.current.src = '';
             }
@@ -279,43 +260,56 @@ export function MeetingRoom({ meetingData }) {
           }
         };
 
-        session.audioVideo.addObserver(meetingObserver);
-        session.audioVideo.addContentShareObserver(contentShareObserver);
+        session?.audioVideo?.addObserver(meetingObserver);
+        session?.audioVideo?.addContentShareObserver(contentShareObserver);
 
-        session.audioVideo.realtimeSubscribeToAttendeeIdPresence((attendeeId, present) => {
-          handleAttendeePresenceChange(attendeeId, present);
+        session?.audioVideo?.realtimeSubscribeToAttendeeIdPresence((attendeeId, present, externalUserId) => {
+          // Store the external user ID mapping
+          if (present && externalUserId) {
+            setAttendeeRoster(prev => {
+              const newRoster = new Map(prev);
+              newRoster.set(attendeeId, externalUserId);
+              return newRoster;
+            });
+          } else if (!present) {
+            setAttendeeRoster(prev => {
+              const newRoster = new Map(prev);
+              newRoster.delete(attendeeId);
+              return newRoster;
+            });
+          }
+          handleAttendeePresenceChange(attendeeId, present, externalUserId);
         });
 
-        session.audioVideo.realtimeSubscribeToMuteAndUnmuteLocalAudio((muted) => {
+        session?.audioVideo?.realtimeSubscribeToMuteAndUnmuteLocalAudio((muted) => {
           setIsMuted(muted);
-          updateParticipantMuteStatus(Attendee.AttendeeId, muted);
+          updateParticipantMuteStatus(Attendee?.AttendeeId, muted);
         });
 
         try {
-          session.audioVideo.subscribeToActiveSpeakerDetector(
+          session?.audioVideo?.subscribeToActiveSpeakerDetector(
             new DefaultActiveSpeakerPolicy(),
             (activeSpeakers) => {
               updateActiveSpeakers(activeSpeakers);
             }
           );
         } catch (error) {
-          console.warn("Active speaker detection not available:", error);
+          // Silent error handling
         }
 
         await loadAvailableDevices();
 
         cleanupFunction = async () => {
           if (session) {
-            session.audioVideo.removeObserver(meetingObserver);
-            session.audioVideo.removeContentShareObserver(contentShareObserver);
-            session.audioVideo.stop();
+            session?.audioVideo?.removeObserver(meetingObserver);
+            session?.audioVideo?.removeContentShareObserver(contentShareObserver);
+            session?.audioVideo?.stop();
           }
           await cleanup();
         };
 
       } catch (error) {
-        console.error("Failed to initialize meeting:", error);
-        setConnectionError(`Failed to initialize meeting: ${error.message}`);
+        setConnectionError(`Failed to initialize meeting: ${error?.message}`);
       }
     }
 
@@ -337,23 +331,22 @@ export function MeetingRoom({ meetingData }) {
 
 
   const handleRemoteVideoTile = (tileState) => {
-    const { boundAttendeeId, tileId } = tileState;
+    const { boundAttendeeId, tileId } = tileState || {};
 
     setTimeout(() => {
       const videoElement = document.getElementById(`video-${boundAttendeeId}`);
-      if (videoElement && meetingSessionRef.current) {
+      if (videoElement && meetingSessionRef?.current) {
         try {
           meetingSessionRef.current.audioVideo.bindVideoElement(tileId, videoElement);
-          console.log(`Bound video tile ${tileId} to element for attendee ${boundAttendeeId}`);
         } catch (error) {
-          console.error("Failed to bind remote video element:", error);
+          // Silent error handling
         }
       }
     }, 100);
 
     setParticipants(prev => {
       const updated = [...prev];
-      const participantIndex = updated.findIndex(p => p.attendeeId === boundAttendeeId);
+      const participantIndex = updated.findIndex(p => p?.attendeeId === boundAttendeeId);
 
       if (participantIndex >= 0) {
         updated[participantIndex] = {
@@ -368,14 +361,10 @@ export function MeetingRoom({ meetingData }) {
   };
 
   const handleVideoTileRemoval = (tileId) => {
-    console.log("Video tile removed:", tileId);
-    
     // Handle content share tile removal
-    if (screenShareStateRef.current.tileId === tileId) {
-      console.log("Content share tile removed");
-      
+    if (screenShareStateRef?.current?.tileId === tileId) {
       // Clean video element
-      if (contentShareVideoRef.current) {
+      if (contentShareVideoRef?.current) {
         contentShareVideoRef.current.srcObject = null;
         contentShareVideoRef.current.src = '';
       }
@@ -393,7 +382,7 @@ export function MeetingRoom({ meetingData }) {
     // Handle regular video tiles
     setParticipants(prev =>
       prev.map(p =>
-        p.tileId === tileId
+        p?.tileId === tileId
           ? { ...p, videoEnabled: false, tileId: null }
           : p
       )
@@ -402,57 +391,106 @@ export function MeetingRoom({ meetingData }) {
 
 
 
-  const handleAttendeePresenceChange = (attendeeId, present) => {
+  const handleAttendeePresenceChange = async (attendeeId, present, externalUserId) => {
     // Don't add content share attendees (screen share) to participants list
     if (attendeeId && attendeeId.includes('#content')) {
-      console.log("Ignoring content share attendee:", attendeeId);
       return;
     }
 
     if (present) {
       setParticipants(prev => {
-        if (prev.find(p => p.attendeeId === attendeeId)) {
+        if (prev.find(p => p?.attendeeId === attendeeId)) {
           return prev;
         }
 
-        const isLocal = attendeeId === Attendee.AttendeeId;
+        const isLocal = attendeeId === Attendee?.AttendeeId;
 
+        // Get the display name and host status from external user ID
         let displayName = "Unknown";
+        let isParticipantHost = false;
+        
         if (isLocal) {
+          // For local user, always show "You"
           displayName = "You";
+          isParticipantHost = isHost;
         } else {
-          displayName = `User ${attendeeId.slice(-4)}`;
+          // For remote users, use the externalUserId passed from the callback
+          if (externalUserId) {
+            // Check if this user is the host
+            isParticipantHost = externalUserId.startsWith('HOST-');
+            
+            // Extract name (skip 'HOST-' prefix if present)
+            const parts = externalUserId.split('-');
+            const namePart = isParticipantHost ? parts[1] : parts[0];
+            displayName = namePart || `User ${attendeeId?.slice(-4)}`;
+          } else {
+            // Fallback: try to get from roster state
+            const storedExternalId = attendeeRoster.get(attendeeId);
+            if (storedExternalId) {
+              isParticipantHost = storedExternalId.startsWith('HOST-');
+              const parts = storedExternalId.split('-');
+              const namePart = isParticipantHost ? parts[1] : parts[0];
+              displayName = namePart || `User ${attendeeId?.slice(-4)}`;
+            } else {
+              displayName = `User ${attendeeId?.slice(-4)}`;
+            }
+          }
+        }
+
+        // Subscribe to this attendee's volume indicator for mute status tracking
+        if (meetingSessionRef?.current && !isLocal) {
+          meetingSessionRef.current.audioVideo.realtimeSubscribeToVolumeIndicator(
+            attendeeId,
+            (id, volume, muted, signalStrength) => {
+              // The muted parameter from the callback is the actual mute state
+              // Update immediately when we receive it
+              if (muted !== null && muted !== undefined) {
+                updateParticipantMuteStatus(id, muted);
+              }
+            }
+          );
         }
 
         return [...prev, {
           attendeeId,
           name: displayName,
           isLocal,
+          isHost: isParticipantHost,
           videoEnabled: false,
-          muted: true,
+          muted: null, // Don't assume - wait for actual status from volume indicator callback
           tileId: null,
           isActiveSpeaker: false
         }];
       });
     } else {
-      setParticipants(prev => prev.filter(p => p.attendeeId !== attendeeId));
+      // Unsubscribe when attendee leaves
+      if (meetingSessionRef?.current) {
+        meetingSessionRef.current.audioVideo.realtimeUnsubscribeFromVolumeIndicator(attendeeId);
+      }
+      setParticipants(prev => prev.filter(p => p?.attendeeId !== attendeeId));
     }
   };
 
   const updateParticipantMuteStatus = (attendeeId, muted) => {
     setParticipants(prev =>
       prev.map(p =>
-        p.attendeeId === attendeeId ? { ...p, muted } : p
+        p?.attendeeId === attendeeId ? { ...p, muted } : p
       )
     );
   };
 
   const updateActiveSpeakers = (activeSpeakers) => {
     setParticipants(prev =>
-      prev.map(p => ({
-        ...p,
-        isActiveSpeaker: activeSpeakers.some(speaker => speaker.attendeeId === p.attendeeId)
-      }))
+      prev.map(p => {
+        const isActive = activeSpeakers?.some(speaker => speaker?.attendeeId === p?.attendeeId);
+        // If someone is an active speaker, they must be unmuted
+        // But don't override null state unless they're actually speaking
+        return {
+          ...p,
+          isActiveSpeaker: isActive,
+          muted: isActive ? false : p?.muted // If speaking, definitely unmuted; otherwise keep current state
+        };
+      })
     );
   };
 
@@ -492,62 +530,62 @@ export function MeetingRoom({ meetingData }) {
 
   const loadAvailableDevices = async () => {
     try {
-      const audioInputDevices = await meetingSessionRef.current.audioVideo.listAudioInputDevices();
-      const videoInputDevices = await meetingSessionRef.current.audioVideo.listVideoInputDevices();
+      const audioInputDevices = await meetingSessionRef?.current?.audioVideo?.listAudioInputDevices();
+      const videoInputDevices = await meetingSessionRef?.current?.audioVideo?.listVideoInputDevices();
 
       setDevices({
-        audioInputs: audioInputDevices,
-        videoInputs: videoInputDevices
+        audioInputs: audioInputDevices || [],
+        videoInputs: videoInputDevices || []
       });
 
-      if (audioInputDevices.length > 0 && !selectedAudioInput) {
-        setSelectedAudioInput(audioInputDevices[0].deviceId);
+      if (audioInputDevices?.length > 0 && !selectedAudioInput) {
+        setSelectedAudioInput(audioInputDevices[0]?.deviceId);
       }
-      if (videoInputDevices.length > 0 && !selectedVideoInput) {
-        setSelectedVideoInput(videoInputDevices[0].deviceId);
+      if (videoInputDevices?.length > 0 && !selectedVideoInput) {
+        setSelectedVideoInput(videoInputDevices[0]?.deviceId);
       }
     } catch (error) {
-      console.warn("Failed to load devices:", error);
+      // Silent error handling
     }
   };
 
   const cleanup = async () => {
     try {
       // Stop video input if enabled
-      if (meetingSessionRef.current && isVideoEnabled) {
+      if (meetingSessionRef?.current && isVideoEnabled) {
         try {
           meetingSessionRef.current.audioVideo.stopLocalVideoTile();
           await meetingSessionRef.current.audioVideo.stopVideoInput();
         } catch (error) {
-          console.warn("Failed to stop video input:", error);
+          // Silent error handling
         }
       }
 
       // Stop screen sharing if active
-      if (meetingSessionRef.current && screenShareState.isSharing) {
+      if (meetingSessionRef?.current && screenShareState?.isSharing) {
         try {
           await meetingSessionRef.current.audioVideo.stopContentShare();
-          if (contentShareVideoRef.current) {
+          if (contentShareVideoRef?.current) {
             contentShareVideoRef.current.pause();
             contentShareVideoRef.current.srcObject = null;
             contentShareVideoRef.current.src = '';
           }
         } catch (error) {
-          console.warn("Failed to stop screen sharing:", error);
+          // Silent error handling
         }
       }
 
-      if (audioElementRef.current) {
+      if (audioElementRef?.current) {
         try {
-          meetingSessionRef.current?.audioVideo.unbindAudioElement();
+          meetingSessionRef?.current?.audioVideo?.unbindAudioElement();
         } catch (error) {
-          console.warn("Failed to unbind audio element:", error);
+          // Silent error handling
         }
 
         try {
           audioElementRef.current.remove();
         } catch (error) {
-          console.warn("Failed to remove audio element:", error);
+          // Silent error handling
         }
 
         audioElementRef.current = null;
@@ -565,13 +603,13 @@ export function MeetingRoom({ meetingData }) {
       });
 
     } catch (error) {
-      console.error("Error during cleanup:", error);
+      // Silent error handling
     }
   };
 
   const startPreviewStream = async () => {
     try {
-      if (selectedVideoInput && previewVideoRef.current) {
+      if (selectedVideoInput && previewVideoRef?.current) {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { deviceId: selectedVideoInput },
           audio: false
@@ -582,21 +620,20 @@ export function MeetingRoom({ meetingData }) {
         return true;
       }
     } catch (error) {
-      console.error("Failed to start camera preview:", error);
-      setConnectionError(`Failed to access camera: ${error.message}`);
+      setConnectionError(`Failed to access camera: ${error?.message}`);
       return false;
     }
   };
 
   const stopPreviewStream = () => {
-    if (previewStreamRef.current) {
+    if (previewStreamRef?.current) {
       previewStreamRef.current.getTracks().forEach(track => {
-        track.stop();
+        track?.stop();
       });
       previewStreamRef.current = null;
     }
 
-    if (previewVideoRef.current) {
+    if (previewVideoRef?.current) {
       previewVideoRef.current.srcObject = null;
     }
   };
@@ -609,25 +646,23 @@ export function MeetingRoom({ meetingData }) {
       await startMeeting();
     } catch (error) {
       if (retryCount < maxRetries &&
-        (error.message?.includes("concurrent") ||
-          error.message?.includes("ConflictException") ||
-          error.message?.includes("TooManyRequestsException") ||
-          error.message?.includes("SignalingChannelClosedUnexpectedly"))) {
+        (error?.message?.includes("concurrent") ||
+          error?.message?.includes("ConflictException") ||
+          error?.message?.includes("TooManyRequestsException") ||
+          error?.message?.includes("SignalingChannelClosedUnexpectedly"))) {
 
-        console.log(`Meeting start failed, retrying in ${retryDelay}ms... (${retryCount + 1}/${maxRetries})`);
         setConnectionError(`Connection busy, retrying in ${retryDelay / 1000} seconds...`);
 
         setTimeout(() => {
           startMeetingWithRetry(retryCount + 1);
         }, retryDelay);
-      } else if (error.message?.includes("SignalingChannelClosedUnexpectedly")) {
-        console.log(`Signaling channel error, retrying in ${retryDelay}ms... (${retryCount + 1}/${maxRetries})`);
+      } else if (error?.message?.includes("SignalingChannelClosedUnexpectedly")) {
         setConnectionError(`Connection interrupted, retrying in ${retryDelay / 1000} seconds...`);
 
         setTimeout(() => {
           startMeetingWithRetry(retryCount + 1);
         }, retryDelay);
-      } else if (error.message?.includes("AudioJoinedFromAnotherDevice")) {
+      } else if (error?.message?.includes("AudioJoinedFromAnotherDevice")) {
         setConnectionError("Multiple sessions detected. Please ensure each participant has a unique name and refresh to try again.");
       } else {
         throw error;
@@ -636,7 +671,7 @@ export function MeetingRoom({ meetingData }) {
   };
 
   const startMeeting = async () => {
-    if (!meetingSessionRef.current) {
+    if (!meetingSessionRef?.current) {
       setConnectionError("Meeting session not initialized.");
       return;
     }
@@ -658,45 +693,44 @@ export function MeetingRoom({ meetingData }) {
 
       await meetingSessionRef.current.audioVideo.start();
 
+      // Only mute if the user explicitly chose to be muted
       if (isMuted) {
         meetingSessionRef.current.audioVideo.realtimeMuteLocalAudio();
+      } else {
+        // Ensure we're unmuted
+        meetingSessionRef.current.audioVideo.realtimeUnmuteLocalAudio();
       }
 
-      console.log("Meeting session started successfully");
-
     } catch (error) {
-      console.error("Failed to start meeting:", error);
-
       // Handle specific error cases
-      if (error.message?.includes("AudioJoinedFromAnotherDevice")) {
+      if (error?.message?.includes("AudioJoinedFromAnotherDevice")) {
         setConnectionError("Multiple sessions detected. Each participant needs a unique name. Please refresh and try again.");
-      } else if (error.message?.includes("SignalingChannelClosedUnexpectedly")) {
+      } else if (error?.message?.includes("SignalingChannelClosedUnexpectedly")) {
         setConnectionError("Connection lost unexpectedly. This can happen due to network issues. Please check your internet connection and try again.");
-      } else if (error.message?.includes("concurrent") || error.message?.includes("ConflictException")) {
+      } else if (error?.message?.includes("concurrent") || error?.message?.includes("ConflictException")) {
         setConnectionError("Meeting is busy. Please wait a moment and try again.");
-      } else if (error.message?.includes("TooManyRequestsException")) {
+      } else if (error?.message?.includes("TooManyRequestsException")) {
         setConnectionError("Too many join requests. Please wait 10 seconds and try again.");
       } else {
-        setConnectionError(`Failed to start meeting: ${error.message || 'Unknown error'}`);
+        setConnectionError(`Failed to start meeting: ${error?.message || 'Unknown error'}`);
       }
 
       // Clean up on failure
       try {
-        if (meetingSessionRef.current) {
+        if (meetingSessionRef?.current) {
           meetingSessionRef.current.audioVideo.stop();
         }
       } catch (cleanupError) {
-        console.warn("Error during cleanup:", cleanupError);
+        // Silent error handling
       }
     }
   };
 
   const leaveMeeting = async () => {
-    console.log("Leaving meeting...");
     setIsLeavingMeeting(true);
     setIsConnected(false);
 
-    if (meetingSessionRef.current) {
+    if (meetingSessionRef?.current) {
       try {
         // Stop video first
         if (isVideoEnabled) {
@@ -705,22 +739,19 @@ export function MeetingRoom({ meetingData }) {
         }
 
         // Stop screen sharing if active
-        if (screenShareState.isMyShare) {
+        if (screenShareState?.isMyShare) {
           meetingSessionRef.current.audioVideo.stopContentShare();
         }
 
         // Stop the entire session
         meetingSessionRef.current.audioVideo.stop();
 
-        console.log("Meeting session stopped successfully");
-
       } catch (error) {
-        console.error("Error during meeting cleanup:", error);
         // Force stop if there's an error
         try {
-          meetingSessionRef.current.audioVideo.stop();
+          meetingSessionRef?.current?.audioVideo?.stop();
         } catch (forceStopError) {
-          console.error("Error force stopping session:", forceStopError);
+          // Silent error handling
         }
       }
     }
@@ -731,7 +762,7 @@ export function MeetingRoom({ meetingData }) {
   };
 
   const toggleMute = () => {
-    if (isConnected && meetingSessionRef.current) {
+    if (isConnected && meetingSessionRef?.current) {
       if (isMuted) {
         meetingSessionRef.current.audioVideo.realtimeUnmuteLocalAudio();
       } else {
@@ -743,7 +774,7 @@ export function MeetingRoom({ meetingData }) {
   };
 
   const toggleVideo = async () => {
-    if (isConnected && meetingSessionRef.current) {
+    if (isConnected && meetingSessionRef?.current) {
       try {
         if (isVideoEnabled) {
           meetingSessionRef.current.audioVideo.stopLocalVideoTile();
@@ -759,8 +790,7 @@ export function MeetingRoom({ meetingData }) {
           }
         }
       } catch (error) {
-        console.error("Failed to toggle video:", error);
-        setConnectionError(`Failed to toggle video: ${error.message}`);
+        setConnectionError(`Failed to toggle video: ${error?.message}`);
       }
     } else {
       try {
@@ -778,23 +808,19 @@ export function MeetingRoom({ meetingData }) {
           }
         }
       } catch (error) {
-        console.error("Failed to toggle camera preview:", error);
-        setConnectionError(`Failed to toggle camera: ${error.message}`);
+        setConnectionError(`Failed to toggle camera: ${error?.message}`);
       }
     }
   };
 
   const toggleScreenShare = async () => {
-    console.log("=== SIMPLE SCREEN SHARE TOGGLE ===");
-    console.log("Current state:", screenShareState);
-
-    if (!meetingSessionRef.current || !isConnected) {
+    if (!meetingSessionRef?.current || !isConnected) {
       setConnectionError("Please join the meeting first");
       return;
     }
 
     // Simple check: if someone else is sharing, don't allow
-    if (screenShareState.isSharing && !screenShareState.isMyShare) {
+    if (screenShareState?.isSharing && !screenShareState?.isMyShare) {
       setConnectionError("Someone else is currently sharing their screen");
       return;
     }
@@ -802,10 +828,8 @@ export function MeetingRoom({ meetingData }) {
     try {
       setConnectionError(null);
 
-      if (screenShareState.isMyShare) {
+      if (screenShareState?.isMyShare) {
         // Stop sharing - simple approach
-        console.log("Stopping screen share...");
-        
         // Immediate UI cleanup
         setScreenShareState({
           isSharing: false,
@@ -815,7 +839,7 @@ export function MeetingRoom({ meetingData }) {
         });
 
         // Clean video element
-        if (contentShareVideoRef.current) {
+        if (contentShareVideoRef?.current) {
           contentShareVideoRef.current.srcObject = null;
           contentShareVideoRef.current.src = '';
         }
@@ -823,16 +847,12 @@ export function MeetingRoom({ meetingData }) {
         // Try to stop, but don't worry about errors
         try {
           await meetingSessionRef.current.audioVideo.stopContentShare();
-          console.log("Screen share stopped successfully");
         } catch (error) {
-          console.log("Stop error (ignoring):", error);
           // Ignore the error - UI is already updated
         }
 
       } else {
         // Start sharing
-        console.log("Starting screen share...");
-        
         const stream = await navigator.mediaDevices.getDisplayMedia({
           video: { mediaSource: 'screen' },
           audio: false
@@ -842,19 +862,18 @@ export function MeetingRoom({ meetingData }) {
         const videoTrack = stream.getVideoTracks()[0];
         if (videoTrack) {
           videoTrack.addEventListener('ended', () => {
-            console.log("Screen share ended by browser");
             setScreenShareState({
               isSharing: false,
               isMyShare: false,
               tileId: null,
               attendeeId: null
             });
-            if (contentShareVideoRef.current) {
+            if (contentShareVideoRef?.current) {
               contentShareVideoRef.current.srcObject = null;
               contentShareVideoRef.current.src = '';
             }
             // Try to stop via SDK, but don't worry about errors
-            if (meetingSessionRef.current) {
+            if (meetingSessionRef?.current) {
               meetingSessionRef.current.audioVideo.stopContentShare().catch(() => {});
             }
           });
@@ -862,29 +881,25 @@ export function MeetingRoom({ meetingData }) {
 
         // Start content share
         await meetingSessionRef.current.audioVideo.startContentShare(stream);
-        console.log("Screen share started");
         
         // Set state immediately
         setScreenShareState({
           isSharing: true,
           isMyShare: true,
           tileId: null, // Will be set by observer
-          attendeeId: Attendee.AttendeeId
+          attendeeId: Attendee?.AttendeeId
         });
       }
 
     } catch (error) {
-      console.error("Screen share error:", error);
-      
-      if (error.name === 'NotAllowedError') {
+      if (error?.name === 'NotAllowedError') {
         setConnectionError("Screen sharing permission denied");
-      } else if (error.name === 'AbortError') {
+      } else if (error?.name === 'AbortError') {
         setConnectionError("Screen sharing was cancelled");
       } else {
         setConnectionError("Screen sharing failed. Please try again.");
       }
       
-      // Reset on any error
       setScreenShareState({
         isSharing: false,
         isMyShare: false,
@@ -894,7 +909,6 @@ export function MeetingRoom({ meetingData }) {
     }
   };
 
-  // Handler for device changes
   const handleVideoInputChange = async (newDeviceId) => {
     setSelectedVideoInput(newDeviceId);
     if (isVideoEnabled && newDeviceId) {
@@ -925,14 +939,6 @@ export function MeetingRoom({ meetingData }) {
         />
       ) : (
         <div className="h-screen flex bg-white">
-          <ParticipantsSidebar
-            showParticipantsList={showParticipantsList}
-            onToggle={() => setShowParticipantsList(false)}
-            participants={participants}
-            isMuted={isMuted}
-            isVideoEnabled={isVideoEnabled}
-          />
-
           <div className="flex-1 flex flex-col">
             <MeetingHeader
               connectionError={connectionError}
@@ -952,6 +958,7 @@ export function MeetingRoom({ meetingData }) {
                 isVideoEnabled={isVideoEnabled}
                 isMuted={isMuted}
                 participants={participants}
+                localUserName={localUserName}
               />
             </div>
 
@@ -966,6 +973,16 @@ export function MeetingRoom({ meetingData }) {
               onLeaveMeeting={leaveMeeting}
             />
           </div>
+
+          <ParticipantsSidebar
+            showParticipantsList={showParticipantsList}
+            onToggle={() => setShowParticipantsList(false)}
+            participants={participants}
+            isMuted={isMuted}
+            isVideoEnabled={isVideoEnabled}
+            localUserName={localUserName}
+            isLocalUserHost={isHost}
+          />
         </div>
       )}
     </div>

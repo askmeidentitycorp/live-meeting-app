@@ -9,9 +9,7 @@ const client = new ChimeSDKMeetingsClient({ region: process.env.AWS_REGION });
 
 export async function POST(req) {
   try {
-    console.log('Meeting API called');
-    const { meetingTitle, attendeeName } = await req.json();
-    console.log('Request data:', { meetingTitle, attendeeName });
+    const { meetingTitle, attendeeName } = await req?.json();
     
     if (!process.env.AWS_REGION) {
       throw new Error('AWS_REGION environment variable not set');
@@ -27,15 +25,14 @@ export async function POST(req) {
       }
     });
     
-    console.log('Creating meeting with command:', command);
     const meeting = await client.send(command);
-    console.log('Meeting created successfully:', meeting.Meeting.MeetingId);
     
     // Create unique external user ID to prevent conflicts
-    const uniqueUserId = `${attendeeName || "Attendee"}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    // Mark the creator as host by adding 'HOST' prefix
+    const uniqueUserId = `HOST-${attendeeName || "Attendee"}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
     const attendeeCommand = new CreateAttendeeCommand({
-      MeetingId: meeting.Meeting.MeetingId,
+      MeetingId: meeting?.Meeting?.MeetingId,
       ExternalUserId: uniqueUserId,
       Capabilities: {
         Audio: "SendReceive",
@@ -45,25 +42,24 @@ export async function POST(req) {
     });
     
     const attendee = await client.send(attendeeCommand);
-    console.log('Attendee created successfully:', attendee.Attendee.AttendeeId);
     
     // Track the meeting
-    addMeeting(meeting.Meeting.MeetingId, {
-      meetingId: meeting.Meeting.MeetingId,
+    addMeeting(meeting?.Meeting?.MeetingId, {
+      meetingId: meeting?.Meeting?.MeetingId,
       title: meetingTitle,
       createdAt: new Date().toISOString(),
-      mediaRegion: meeting.Meeting.MediaRegion
+      mediaRegion: meeting?.Meeting?.MediaRegion,
+      hostAttendeeId: attendee?.Attendee?.AttendeeId // Store host's attendee ID
     });
     
     const response = {
-      Meeting: meeting.Meeting,
-      Attendee: attendee.Attendee
+      Meeting: meeting?.Meeting,
+      Attendee: attendee?.Attendee,
+      isHost: true // Mark this attendee as host
     };
-    console.log('Sending response:', response);
     
     return Response.json(response);
   } catch (err) {
-    console.error('Meeting API error:', err);
-    return Response.json({ error: err.message }, { status: 500 });
+    return Response.json({ error: err?.message }, { status: 500 });
   }
 }

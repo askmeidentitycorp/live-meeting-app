@@ -10,7 +10,8 @@ export function VideoGrid({
   localVideoRef,
   isVideoEnabled,
   isMuted,
-  participants
+  participants,
+  localUserName
 }) {
 
   if (contentShareTileId && (isLocalScreenSharing || isRemoteScreenSharing)) {
@@ -26,13 +27,10 @@ export function VideoGrid({
               playsInline
               muted
               className="w-full h-full object-contain"
-              onLoadedMetadata={() => console.log("Screen share video metadata loaded")}
-              onCanPlay={() => console.log("Screen share video can play")}
-              onError={(e) => console.error("Screen share video error:", e)}
             />
             <div className="absolute top-2 left-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
               <Monitor className="w-3 h-3" />
-              Screen Share (Tile: {contentShareTileId})
+              Screen Share
             </div>
           </div>
         )}
@@ -67,28 +65,28 @@ export function VideoGrid({
 
           {/* Remote Participants (Mini) */}
           {participants
-            .filter(p => !p.isLocal)
+            ?.filter(p => !p?.isLocal)
             .map((participant) => (
-              <div key={participant.attendeeId} className="relative bg-gray-200 rounded-lg overflow-hidden border border-gray-300 aspect-video">
-                {participant.videoEnabled && participant.tileId && (
+              <div key={participant?.attendeeId} className="relative bg-gray-200 rounded-lg overflow-hidden border border-gray-300 aspect-video">
+                {participant?.videoEnabled && participant?.tileId && (
                   <video
-                    id={`video-${participant.attendeeId}`}
+                    id={`video-${participant?.attendeeId}`}
                     autoPlay
                     playsInline
                     className="w-full h-full object-cover"
                   />
                 )}
-                {!participant.videoEnabled && (
+                {!participant?.videoEnabled && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
                     <VideoOff className="w-6 h-6 text-gray-500" />
                   </div>
                 )}
                 <div className={`absolute bottom-1 left-1 px-1 py-0.5 rounded text-xs font-medium text-white ${
-                  participant.isActiveSpeaker ? 'bg-green-500' : 'bg-blue-500'
+                  participant?.isActiveSpeaker ? 'bg-green-500' : 'bg-blue-500'
                 }`}>
-                  {participant.name}
+                  {participant?.name}
                 </div>
-                {participant.muted && (
+                {participant?.muted && (
                   <div className="absolute top-1 right-1 bg-red-500 text-white p-0.5 rounded">
                     <MicOff className="w-3 h-3" />
                   </div>
@@ -103,10 +101,10 @@ export function VideoGrid({
   return (
     /* Normal Video Grid */
     <div className="h-full grid gap-2" style={{
-      gridTemplateColumns: participants.length <= 1 ? '1fr' :
-        participants.length <= 4 ? 'repeat(2, 1fr)' :
+      gridTemplateColumns: participants?.length <= 1 ? '1fr' :
+        participants?.length <= 4 ? 'repeat(2, 1fr)' :
           'repeat(3, 1fr)',
-      gridTemplateRows: participants.length <= 2 ? '1fr' : 'repeat(2, 1fr)'
+      gridTemplateRows: participants?.length <= 2 ? '1fr' : 'repeat(2, 1fr)'
     }}>
       {/* Local Video */}
       <div className="relative bg-gray-200 rounded-lg overflow-hidden border border-gray-300">
@@ -137,29 +135,29 @@ export function VideoGrid({
 
       {/* Remote Participants */}
       {participants
-        .filter(p => !p.isLocal)
+        ?.filter(p => !p?.isLocal)
         .map((participant) => (
-          <div key={participant.attendeeId} className="relative bg-gray-200 rounded-lg overflow-hidden border border-gray-300">
-            {participant.videoEnabled && participant.tileId && (
+          <div key={participant?.attendeeId} className="relative bg-gray-200 rounded-lg overflow-hidden border border-gray-300">
+            {participant?.videoEnabled && participant?.tileId && (
               <video
-                id={`video-${participant.attendeeId}`}
+                id={`video-${participant?.attendeeId}`}
                 autoPlay
                 playsInline
                 className="w-full h-full object-cover"
               />
             )}
-            {!participant.videoEnabled && (
+            {!participant?.videoEnabled && (
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <VideoOff className="w-12 h-12 text-gray-500" />
-                <p className="text-gray-600 text-sm mt-2">{participant.name}</p>
+                <p className="text-gray-600 text-sm mt-2">{participant?.name}</p>
               </div>
             )}
             <div className={`absolute bottom-2 left-2 px-2 py-1 rounded text-xs font-medium text-white ${
-              participant.isActiveSpeaker ? 'bg-green-500' : 'bg-blue-500'
+              participant?.isActiveSpeaker ? 'bg-green-500' : 'bg-blue-500'
             }`}>
-              {participant.name}
+              {participant?.name}
             </div>
-            {participant.muted && (
+            {participant?.muted && (
               <div className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded">
                 <MicOff className="w-4 h-4" />
               </div>

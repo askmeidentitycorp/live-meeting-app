@@ -17,12 +17,11 @@ export default function MeetingPage({ params, searchParams }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ meetingId: id, attendeeName: name || "Guest" }),
         });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.error || "Join failed");
+        const json = await res?.json();
+        if (!res?.ok) throw new Error(json?.error || "Join failed");
         setMeetingData(json);
       } catch (err) {
-        console.error("Join error:", err);
-        alert(err.message);
+        alert(err?.message);
       } finally {
         setLoading(false);
       }

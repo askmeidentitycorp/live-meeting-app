@@ -22,10 +22,9 @@ export async function GET() {
     
     return Response.json({ 
       meetings: activeMeetings,
-      count: activeMeetings.length 
+      count: activeMeetings?.length || 0
     });
   } catch (err) {
-    console.error(err);
-    return Response.json({ error: err.message }, { status: 500 });
+    return Response.json({ error: err?.message }, { status: 500 });
   }
 }
