@@ -12,6 +12,7 @@ export function VideoGrid({
   isMuted,
   participants
 }) {
+
   if (contentShareTileId && (isLocalScreenSharing || isRemoteScreenSharing)) {
     return (
       /* Screen Share Layout */
@@ -23,11 +24,15 @@ export function VideoGrid({
               ref={contentShareVideoRef}
               autoPlay
               playsInline
+              muted
               className="w-full h-full object-contain"
+              onLoadedMetadata={() => console.log("Screen share video metadata loaded")}
+              onCanPlay={() => console.log("Screen share video can play")}
+              onError={(e) => console.error("Screen share video error:", e)}
             />
             <div className="absolute top-2 left-2 bg-blue-500 text-white px-2 py-1 rounded text-xs font-medium flex items-center gap-1">
               <Monitor className="w-3 h-3" />
-              Screen Share
+              Screen Share (Tile: {contentShareTileId})
             </div>
           </div>
         )}

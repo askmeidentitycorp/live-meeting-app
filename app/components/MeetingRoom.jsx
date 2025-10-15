@@ -29,15 +29,23 @@ export function MeetingRoom({ meetingData }) {
   const audioElementRef = useRef(null);
   const previewStreamRef = useRef(null);
   const contentShareVideoRef = useRef(null);
+  const screenShareStateRef = useRef({ isSharing: false, isMyShare: false, tileId: null, attendeeId: null });
 
   // Meeting state
   const [isConnected, setIsConnected] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
   const [isVideoEnabled, setIsVideoEnabled] = useState(false);
-  const [isLocalScreenSharing, setIsLocalScreenSharing] = useState(false); // Only for local user's screen sharing
-  const [isRemoteScreenSharing, setIsRemoteScreenSharing] = useState(false); // When someone else is sharing
-  const [contentShareTileId, setContentShareTileId] = useState(null);
-  const [contentShareAttendeeId, setContentShareAttendeeId] = useState(null);
+  const [screenShareState, setScreenShareState] = useState({
+    isSharing: false,
+    isMyShare: false,
+    tileId: null,
+    attendeeId: null
+  });
+
+  // Update ref whenever state changes
+  useEffect(() => {
+    screenShareStateRef.current = screenShareState;
+  }, [screenShareState]);
   const [connectionError, setConnectionError] = useState(null);
   const [isLeavingMeeting, setIsLeavingMeeting] = useState(false);
 
@@ -86,15 +94,39 @@ export function MeetingRoom({ meetingData }) {
           videoTileDidUpdate: (tileState) => {
             console.log("Video tile updated:", tileState);
 
-            if (tileState.localTile) {
+            if (tileState.localTile && !tileState.isContent) {
               // Handle local camera video
-              if (localVideoRef.current && !tileState.isContent) {
+              if (localVideoRef.current) {
                 session.audioVideo.bindVideoElement(tileState.tileId, localVideoRef.current);
               }
             } else if (tileState.isContent) {
               // Handle content share (screen share)
-              console.log("Content share tile detected:", tileState);
-              handleContentShareTile(tileState);
+              console.log("Content share tile detected:", tileState.tileId);
+              
+              const contentAttendeeId = tileState.boundAttendeeId || '';
+              const baseAttendeeId = contentAttendeeId.split('#')[0];
+              const isMyShare = baseAttendeeId === Attendee.AttendeeId;
+              
+              // Update state with tile info
+              setScreenShareState(prev => ({
+                ...prev,
+                isSharing: true,
+                isMyShare: isMyShare,
+                tileId: tileState.tileId,
+                attendeeId: tileState.boundAttendeeId
+              }));
+              
+              // Bind video element
+              setTimeout(() => {
+                if (contentShareVideoRef.current && meetingSessionRef.current) {
+                  try {
+                    meetingSessionRef.current.audioVideo.bindVideoElement(tileState.tileId, contentShareVideoRef.current);
+                    console.log("Screen share video bound");
+                  } catch (error) {
+                    console.error("Failed to bind screen share video:", error);
+                  }
+                }
+              }, 100);
             } else {
               // Handle remote participant video
               handleRemoteVideoTile(tileState);
@@ -220,57 +252,30 @@ export function MeetingRoom({ meetingData }) {
           }
         };
 
-        // Content share observer for screen sharing
+        // Content share observer - simplified
         const contentShareObserver = {
           contentShareDidStart: () => {
-            console.log("LOCAL content share started");
-            setIsLocalScreenSharing(true);
+            console.log("Content share started (observer)");
+            // Don't update state here - let the toggle function handle it
+            // This prevents race conditions between user action and observer
           },
           
-          contentShareDidStop: (contentShareStatus) => {
-            console.log("Content share stopped notification:", contentShareStatus);
-            console.log("Current content share attendee:", contentShareAttendeeId);
-            console.log("My attendee ID:", Attendee.AttendeeId);
+          contentShareDidStop: () => {
+            console.log("Content share stopped (observer)");
             
-            // Always clear local screen sharing state when content share stops
-            setIsLocalScreenSharing(false);
-            
-            // Only clean up if this was our local screen share OR if we don't have attendee info
-            if (!contentShareAttendeeId || contentShareAttendeeId === Attendee.AttendeeId) {
-              console.log("Cleaning up LOCAL content share");
-              const currentTileId = contentShareTileId;
-              setContentShareTileId(null);
-              setContentShareAttendeeId(null);
-              setIsRemoteScreenSharing(false);
-              
-              // Clean up video element
-              if (contentShareVideoRef.current) {
-                try {
-                  contentShareVideoRef.current.pause();
-                  contentShareVideoRef.current.srcObject = null;
-                  contentShareVideoRef.current.removeAttribute('srcObject');
-                  contentShareVideoRef.current.src = '';
-                  contentShareVideoRef.current.load();
-                  
-                  // Unbind from Chime if we have a tile ID
-                  if (currentTileId && meetingSessionRef.current) {
-                    meetingSessionRef.current.audioVideo.unbindVideoElement(currentTileId);
-                  }
-                  
-                  console.log("Content share video element cleaned up successfully");
-                } catch (error) {
-                  console.warn("Failed to clean up content share video element:", error);
-                }
-              }
+            // Always clean up video element
+            if (contentShareVideoRef.current) {
+              contentShareVideoRef.current.srcObject = null;
+              contentShareVideoRef.current.src = '';
             }
-          },
-
-          contentShareDidPause: () => {
-            console.log("Content share paused");
-          },
-
-          contentShareDidUnpause: () => {
-            console.log("Content share unpaused");
+            
+            // Reset state
+            setScreenShareState({
+              isSharing: false,
+              isMyShare: false,
+              tileId: null,
+              attendeeId: null
+            });
           }
         };
 
@@ -329,31 +334,7 @@ export function MeetingRoom({ meetingData }) {
     };
   }, []);
 
-  // Cleanup orphaned content share tiles
-  useEffect(() => {
-    if (contentShareTileId && !isLocalScreenSharing && !isRemoteScreenSharing) {
-      console.log("Detected orphaned content share tile, cleaning up...");
-      
-      // Clean up the orphaned tile
-      if (contentShareVideoRef.current) {
-        try {
-          if (meetingSessionRef.current) {
-            meetingSessionRef.current.audioVideo.unbindVideoElement(contentShareTileId);
-          }
-          contentShareVideoRef.current.pause();
-          contentShareVideoRef.current.srcObject = null;
-          contentShareVideoRef.current.removeAttribute('srcObject');
-          contentShareVideoRef.current.src = '';
-          contentShareVideoRef.current.load();
-        } catch (error) {
-          console.warn("Failed to clean up orphaned content share video:", error);
-        }
-      }
-      
-      setContentShareTileId(null);
-      setContentShareAttendeeId(null);
-    }
-  }, [contentShareTileId, isLocalScreenSharing, isRemoteScreenSharing]);
+
 
   const handleRemoteVideoTile = (tileState) => {
     const { boundAttendeeId, tileId } = tileState;
@@ -387,50 +368,29 @@ export function MeetingRoom({ meetingData }) {
   };
 
   const handleVideoTileRemoval = (tileId) => {
-    console.log("Handling video tile removal for tileId:", tileId);
+    console.log("Video tile removed:", tileId);
     
     // Handle content share tile removal
-    if (contentShareTileId === tileId) {
-      console.log("Removing content share tile - switching back to normal layout");
-      console.log("Tile removal - Current states:", {
-        contentShareTileId,
-        contentShareAttendeeId,
-        isLocalScreenSharing,
-        isRemoteScreenSharing
-      });
+    if (screenShareStateRef.current.tileId === tileId) {
+      console.log("Content share tile removed");
       
-      // Clean up video element first to prevent black screen
+      // Clean video element
       if (contentShareVideoRef.current) {
-        try {
-          // Unbind the tile from the video element first
-          if (meetingSessionRef.current) {
-            meetingSessionRef.current.audioVideo.unbindVideoElement(tileId);
-          }
-          
-          // Clear video element completely
-          contentShareVideoRef.current.pause();
-          contentShareVideoRef.current.srcObject = null;
-          contentShareVideoRef.current.removeAttribute('srcObject');
-          contentShareVideoRef.current.src = '';
-          contentShareVideoRef.current.load();
-          
-          console.log("Content share video element cleaned up");
-        } catch (error) {
-          console.warn("Failed to clear content share video element:", error);
-        }
+        contentShareVideoRef.current.srcObject = null;
+        contentShareVideoRef.current.src = '';
       }
       
-      // Clear all content share states to switch layout
-      setContentShareTileId(null);
-      setContentShareAttendeeId(null);
-      setIsLocalScreenSharing(false);
-      setIsRemoteScreenSharing(false);
-      
-      console.log("All content share states cleared - returning to normal video layout");
+      // Clear state
+      setScreenShareState({
+        isSharing: false,
+        isMyShare: false,
+        tileId: null,
+        attendeeId: null
+      });
       return;
     }
 
-    // Handle regular video tile removal
+    // Handle regular video tiles
     setParticipants(prev =>
       prev.map(p =>
         p.tileId === tileId
@@ -440,38 +400,7 @@ export function MeetingRoom({ meetingData }) {
     );
   };
 
-  const handleContentShareTile = (tileState) => {
-    console.log("Handling content share tile:", tileState);
-    const { boundAttendeeId, tileId } = tileState;
-    
-    // Set tile ID and attendee ID
-    setContentShareTileId(tileId);
-    setContentShareAttendeeId(boundAttendeeId);
-    
-    // Determine if this is local or remote screen sharing
-    const isLocalShare = boundAttendeeId === Attendee.AttendeeId;
-    console.log("Content share from:", boundAttendeeId, "Is local:", isLocalShare);
-    
-    if (isLocalShare) {
-      setIsLocalScreenSharing(true);
-      setIsRemoteScreenSharing(false);
-    } else {
-      setIsLocalScreenSharing(false);
-      setIsRemoteScreenSharing(true);
-    }
 
-    // Bind the content share video element
-    setTimeout(() => {
-      if (contentShareVideoRef.current && meetingSessionRef.current) {
-        try {
-          meetingSessionRef.current.audioVideo.bindVideoElement(tileId, contentShareVideoRef.current);
-          console.log("Bound content share tile to video element");
-        } catch (error) {
-          console.error("Failed to bind content share video element:", error);
-        }
-      }
-    }, 100);
-  };
 
   const handleAttendeePresenceChange = (attendeeId, present) => {
     // Don't add content share attendees (screen share) to participants list
@@ -594,15 +523,14 @@ export function MeetingRoom({ meetingData }) {
         }
       }
 
-      if (meetingSessionRef.current && (isLocalScreenSharing || contentShareTileId)) {
+      // Stop screen sharing if active
+      if (meetingSessionRef.current && screenShareState.isSharing) {
         try {
           await meetingSessionRef.current.audioVideo.stopContentShare();
           if (contentShareVideoRef.current) {
             contentShareVideoRef.current.pause();
             contentShareVideoRef.current.srcObject = null;
-            contentShareVideoRef.current.removeAttribute('srcObject');
             contentShareVideoRef.current.src = '';
-            contentShareVideoRef.current.load();
           }
         } catch (error) {
           console.warn("Failed to stop screen sharing:", error);
@@ -624,14 +552,17 @@ export function MeetingRoom({ meetingData }) {
 
         audioElementRef.current = null;
       }
+      
       stopPreviewStream();
       setParticipants([]);
       setIsMuted(true);
       setIsVideoEnabled(false);
-      setIsLocalScreenSharing(false);
-      setIsRemoteScreenSharing(false);
-      setContentShareTileId(null);
-      setContentShareAttendeeId(null);
+      setScreenShareState({
+        isSharing: false,
+        isMyShare: false,
+        tileId: null,
+        attendeeId: null
+      });
 
     } catch (error) {
       console.error("Error during cleanup:", error);
@@ -774,7 +705,7 @@ export function MeetingRoom({ meetingData }) {
         }
 
         // Stop screen sharing if active
-        if (isLocalScreenSharing) {
+        if (screenShareState.isMyShare) {
           meetingSessionRef.current.audioVideo.stopContentShare();
         }
 
@@ -854,134 +785,112 @@ export function MeetingRoom({ meetingData }) {
   };
 
   const toggleScreenShare = async () => {
-    console.log("=== TOGGLE SCREEN SHARE CALLED ===");
-    console.log("Current states:", {
-      isLocalScreenSharing,
-      isRemoteScreenSharing,
-      contentShareTileId,
-      contentShareAttendeeId,
-      isConnected
-    });
+    console.log("=== SIMPLE SCREEN SHARE TOGGLE ===");
+    console.log("Current state:", screenShareState);
 
-    if (!meetingSessionRef.current) {
-      console.error("Meeting session not available");
-      setConnectionError("Meeting session not available");
-      return;
-    }
-
-    if (!isConnected) {
-      console.error("Not connected to meeting");
+    if (!meetingSessionRef.current || !isConnected) {
       setConnectionError("Please join the meeting first");
       return;
     }
 
-    // Check if someone else is sharing and we're not
-    if (isRemoteScreenSharing && !isLocalScreenSharing) {
-      console.log("Cannot start sharing - someone else is already sharing");
+    // Simple check: if someone else is sharing, don't allow
+    if (screenShareState.isSharing && !screenShareState.isMyShare) {
       setConnectionError("Someone else is currently sharing their screen");
       return;
     }
 
     try {
-      if (isLocalScreenSharing) {
-        console.log("Stopping LOCAL content share...");
+      setConnectionError(null);
 
-        // Clean up video element immediately for responsive UI
+      if (screenShareState.isMyShare) {
+        // Stop sharing - simple approach
+        console.log("Stopping screen share...");
+        
+        // Immediate UI cleanup
+        setScreenShareState({
+          isSharing: false,
+          isMyShare: false,
+          tileId: null,
+          attendeeId: null
+        });
+
+        // Clean video element
         if (contentShareVideoRef.current) {
-          try {
-            contentShareVideoRef.current.pause();
-            contentShareVideoRef.current.srcObject = null;
-            contentShareVideoRef.current.removeAttribute('srcObject');
-            contentShareVideoRef.current.src = '';
-            contentShareVideoRef.current.load();
-          } catch (error) {
-            console.warn("Error cleaning video element:", error);
-          }
+          contentShareVideoRef.current.srcObject = null;
+          contentShareVideoRef.current.src = '';
         }
 
+        // Try to stop, but don't worry about errors
         try {
-          // Stop the content share
           await meetingSessionRef.current.audioVideo.stopContentShare();
-          console.log("Content share stopped successfully");
-          
-          // Update states after successful stop - DON'T set isRemoteScreenSharing to false here
-          setIsLocalScreenSharing(false);
-          setContentShareTileId(null);
-          setContentShareAttendeeId(null);
+          console.log("Screen share stopped successfully");
         } catch (error) {
-          console.error("Error stopping content share:", error);
-          // Reset states even if stop fails
-          setIsLocalScreenSharing(false);
-          setContentShareTileId(null);
-          setContentShareAttendeeId(null);
+          console.log("Stop error (ignoring):", error);
+          // Ignore the error - UI is already updated
         }
-      } else {
-        console.log("Starting screen share...");
 
-        // Request screen capture
+      } else {
+        // Start sharing
+        console.log("Starting screen share...");
+        
         const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: {
-            mediaSource: 'screen',
-            width: { max: 1920 },
-            height: { max: 1080 },
-            frameRate: { max: 15 }
-          },
+          video: { mediaSource: 'screen' },
           audio: false
         });
 
-        console.log("Got screen capture stream:", stream);
-
-        // Handle stream end (user stops sharing via browser)
+        // Handle browser stop
         const videoTrack = stream.getVideoTracks()[0];
         if (videoTrack) {
-          videoTrack.addEventListener('ended', async () => {
-            console.log("=== SCREEN SHARE ENDED BY BROWSER ===");
-            console.log("Video track ended, cleaning up...");
-
-            // Clean up UI immediately
+          videoTrack.addEventListener('ended', () => {
+            console.log("Screen share ended by browser");
+            setScreenShareState({
+              isSharing: false,
+              isMyShare: false,
+              tileId: null,
+              attendeeId: null
+            });
             if (contentShareVideoRef.current) {
-              contentShareVideoRef.current.pause();
               contentShareVideoRef.current.srcObject = null;
-              contentShareVideoRef.current.removeAttribute('srcObject');
               contentShareVideoRef.current.src = '';
-              contentShareVideoRef.current.load();
             }
-
-            // Update states immediately for responsive UI
-            setIsLocalScreenSharing(false);
-            setContentShareTileId(null);
-            setContentShareAttendeeId(null);
-
-            // Stop content share in Chime
+            // Try to stop via SDK, but don't worry about errors
             if (meetingSessionRef.current) {
-              try {
-                await meetingSessionRef.current.audioVideo.stopContentShare();
-                console.log("Successfully stopped content share via Chime SDK");
-              } catch (error) {
-                console.warn("Error stopping content share:", error);
-              }
+              meetingSessionRef.current.audioVideo.stopContentShare().catch(() => {});
             }
           });
         }
 
         // Start content share
         await meetingSessionRef.current.audioVideo.startContentShare(stream);
-        console.log("Content share started successfully");
-        // State will be updated by contentShareDidStart observer
+        console.log("Screen share started");
+        
+        // Set state immediately
+        setScreenShareState({
+          isSharing: true,
+          isMyShare: true,
+          tileId: null, // Will be set by observer
+          attendeeId: Attendee.AttendeeId
+        });
       }
-    } catch (error) {
-      console.error("Failed to toggle screen share:", error);
 
-      // Handle specific error cases
+    } catch (error) {
+      console.error("Screen share error:", error);
+      
       if (error.name === 'NotAllowedError') {
-        setConnectionError("Screen sharing permission denied. Please allow screen sharing and try again.");
-      } else if (error.name === 'NotSupportedError') {
-        setConnectionError("Screen sharing is not supported in this browser.");
+        setConnectionError("Screen sharing permission denied");
       } else if (error.name === 'AbortError') {
-        setConnectionError("Screen sharing was cancelled.");
+        setConnectionError("Screen sharing was cancelled");
       } else {
-        setConnectionError(`Failed to toggle screen share: ${error.message}`);
+        setConnectionError("Screen sharing failed. Please try again.");
       }
+      
+      // Reset on any error
+      setScreenShareState({
+        isSharing: false,
+        isMyShare: false,
+        tileId: null,
+        attendeeId: null
+      });
     }
   };
 
@@ -1035,9 +944,9 @@ export function MeetingRoom({ meetingData }) {
 
             <div className="flex-1 p-3 min-h-0">
               <VideoGrid
-                contentShareTileId={contentShareTileId}
-                isLocalScreenSharing={isLocalScreenSharing}
-                isRemoteScreenSharing={isRemoteScreenSharing}
+                contentShareTileId={screenShareState.tileId}
+                isLocalScreenSharing={screenShareState.isMyShare}
+                isRemoteScreenSharing={screenShareState.isSharing && !screenShareState.isMyShare}
                 contentShareVideoRef={contentShareVideoRef}
                 localVideoRef={localVideoRef}
                 isVideoEnabled={isVideoEnabled}
@@ -1049,8 +958,8 @@ export function MeetingRoom({ meetingData }) {
             <MeetingControls
               isMuted={isMuted}
               isVideoEnabled={isVideoEnabled}
-              isLocalScreenSharing={isLocalScreenSharing}
-              isRemoteScreenSharing={isRemoteScreenSharing}
+              isLocalScreenSharing={screenShareState.isMyShare}
+              isRemoteScreenSharing={screenShareState.isSharing && !screenShareState.isMyShare}
               onToggleMute={toggleMute}
               onToggleVideo={toggleVideo}
               onToggleScreenShare={toggleScreenShare}

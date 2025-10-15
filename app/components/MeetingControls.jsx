@@ -12,6 +12,13 @@ export function MeetingControls({
   onToggleScreenShare,
   onLeaveMeeting
 }) {
+  // Debug logging
+  console.log("MeetingControls props:", {
+    isLocalScreenSharing,
+    isRemoteScreenSharing,
+    buttonDisabled: isRemoteScreenSharing && !isLocalScreenSharing
+  });
+
   return (
     <div className="flex-shrink-0 bg-gray-100 border-t border-gray-200 px-4 py-4">
       <div className="flex items-center justify-center gap-3">
