@@ -2,13 +2,16 @@
 
 import { Users } from "lucide-react";
 import { ErrorDisplay } from "./ErrorDisplay";
+import { RecordingControls } from "./RecordingControls";
 
 export function MeetingHeader({
   connectionError,
   onDismissError,
   participants,
   showParticipantsList,
-  onToggleParticipants
+  onToggleParticipants,
+  meetingId,
+  isHost
 }) {
   return (
     <div className="flex-shrink-0 bg-gray-100 border-b border-gray-200 px-4 py-3">
@@ -26,6 +29,11 @@ export function MeetingHeader({
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Recording Controls - Only visible to host */}
+          {isHost && meetingId && (
+            <RecordingControls meetingId={meetingId} isHost={isHost} />
+          )}
+          
           <div className="bg-gray-200 px-3 py-1 rounded text-sm text-gray-700">
             {participants.filter(p => !p.isLocal).length + 1} participant{participants.filter(p => !p.isLocal).length !== 0 ? 's' : ''}
           </div>

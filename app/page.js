@@ -53,14 +53,14 @@ export default function Home() {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({
-                        meetingTitle: "Meeting",
-                        attendeeName: session.user.name || session.user.email || "Host"
+                        meetingTitle: "Meeting"
                       })
                     });
                     const json = await res.json();
                     if (!res.ok) throw new Error(json?.error || "Failed to create meeting");
                     const meetingId = json?.Meeting?.MeetingId;
-                    window.location.href = `/meeting/${meetingId}?name=${encodeURIComponent(session.user.name || session.user.email || "Host")}`;
+                    // Host info is now automatically handled by authentication
+                    window.location.href = `/meeting/${meetingId}?name=${encodeURIComponent(json?.hostInfo?.name || "Host")}`;
                   } catch (err) {
                     alert(err?.message || "Failed to create meeting");
                   } finally {

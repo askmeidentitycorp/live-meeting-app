@@ -20,7 +20,9 @@ import { MeetingControls } from "./MeetingControls";
 export function MeetingRoom({ meetingData }) {
   const { Meeting, Attendee } = meetingData || {};
 
-  // Refs for meeting session and DOM elements
+  console.log(Attendee);
+  
+
   const meetingSessionRef = useRef(null);
   const videoTilesRef = useRef(new Map());
   const containerRef = useRef(null);
@@ -31,9 +33,8 @@ export function MeetingRoom({ meetingData }) {
   const contentShareVideoRef = useRef(null);
   const screenShareStateRef = useRef({ isSharing: false, isMyShare: false, tileId: null, attendeeId: null });
 
-  // Meeting state
   const [isConnected, setIsConnected] = useState(false);
-  const [isMuted, setIsMuted] = useState(false); // Start unmuted
+  const [isMuted, setIsMuted] = useState(false);
   const [isVideoEnabled, setIsVideoEnabled] = useState(false);
   const [screenShareState, setScreenShareState] = useState({
     isSharing: false,
@@ -42,16 +43,34 @@ export function MeetingRoom({ meetingData }) {
     attendeeId: null
   });
 
-  // Update ref whenever state changes
   useEffect(() => {
     screenShareStateRef.current = screenShareState;
   }, [screenShareState]);
   const [connectionError, setConnectionError] = useState(null);
   const [isLeavingMeeting, setIsLeavingMeeting] = useState(false);
 
-  // Extract local user name and host status from ExternalUserId
-  const localUserName = Attendee?.ExternalUserId ? Attendee.ExternalUserId.split('-')[1] : 'You';
-  const isHost = Attendee?.ExternalUserId?.startsWith('HOST-') || meetingData?.isHost || false;
+  let localUserName = 'You';
+  let isHost = false;
+  if (Attendee?.ExternalUserId) {
+    if (Attendee.ExternalUserId.includes('|')) {
+      localUserName = Attendee.ExternalUserId.split('|')[1]?.split('@')[0] || 'You';
+      isHost = Attendee.ExternalUserId.startsWith('HOST|');
+    } else {
+      localUserName = Attendee.ExternalUserId.split('-')[1] || 'You';
+      isHost = Attendee.ExternalUserId.startsWith('HOST-');
+    }
+  }
+  if (meetingData?.host?.email && Attendee?.ExternalUserId) {
+    const attendeeEmail = Attendee.ExternalUserId.includes('|')
+      ? Attendee.ExternalUserId.split('|')[1]
+      : null;
+    if (attendeeEmail && attendeeEmail === meetingData.host.email) {
+      isHost = true;
+    }
+  }
+
+  // Extract meeting ID from Meeting object
+  const meetingId = Meeting?.MeetingId || null;
 
   // Device and participant state
   const [devices, setDevices] = useState({ audioInputs: [], videoInputs: [] });
@@ -59,7 +78,7 @@ export function MeetingRoom({ meetingData }) {
   const [selectedVideoInput, setSelectedVideoInput] = useState("");
   const [participants, setParticipants] = useState([]);
   const [showParticipantsList, setShowParticipantsList] = useState(false);
-  const [attendeeRoster, setAttendeeRoster] = useState(new Map()); // Store attendeeId -> externalUserId mapping
+  const [attendeeRoster, setAttendeeRoster] = useState(new Map());
 
   // Initialize meeting session
   useEffect(() => {
@@ -76,11 +95,9 @@ export function MeetingRoom({ meetingData }) {
         const deviceController = new DefaultDeviceController(logger);
         const config = new MeetingSessionConfiguration(Meeting, Attendee);
 
-        // Configure meeting session for better stability and connection resilience
         config.enableWebAudio = false; // Disable WebAudio for better compatibility
         config.keepLastFrameWhenPaused = true; // Keep video frames when connection is temporarily lost
 
-        // Add connection retry configuration
         if (config.connectionHealthPolicyConfiguration) {
           config.connectionHealthPolicyConfiguration.cooldownTimeMs = 60000; // 1 minute cooldown
           config.connectionHealthPolicyConfiguration.pastSamplesToConsider = 15;
@@ -98,17 +115,14 @@ export function MeetingRoom({ meetingData }) {
         const meetingObserver = {
           videoTileDidUpdate: (tileState) => {
             if (tileState?.localTile && !tileState?.isContent) {
-              // Handle local camera video
               if (localVideoRef?.current) {
                 session?.audioVideo?.bindVideoElement(tileState.tileId, localVideoRef.current);
               }
             } else if (tileState?.isContent) {
-              // Handle content share (screen share)
               const contentAttendeeId = tileState?.boundAttendeeId || '';
               const baseAttendeeId = contentAttendeeId.split('#')[0];
               const isMyShare = baseAttendeeId === Attendee?.AttendeeId;
-              
-              // Update state with tile info
+
               setScreenShareState(prev => ({
                 ...prev,
                 isSharing: true,
@@ -116,7 +130,7 @@ export function MeetingRoom({ meetingData }) {
                 tileId: tileState.tileId,
                 attendeeId: tileState.boundAttendeeId
               }));
-              
+
               // Bind video element
               setTimeout(() => {
                 if (contentShareVideoRef?.current && meetingSessionRef?.current) {
@@ -242,14 +256,14 @@ export function MeetingRoom({ meetingData }) {
             // Don't update state here - let the toggle function handle it
             // This prevents race conditions between user action and observer
           },
-          
+
           contentShareDidStop: () => {
             // Always clean up video element
             if (contentShareVideoRef?.current) {
               contentShareVideoRef.current.srcObject = null;
               contentShareVideoRef.current.src = '';
             }
-            
+
             // Reset state
             setScreenShareState({
               isSharing: false,
@@ -368,7 +382,7 @@ export function MeetingRoom({ meetingData }) {
         contentShareVideoRef.current.srcObject = null;
         contentShareVideoRef.current.src = '';
       }
-      
+
       // Clear state
       setScreenShareState({
         isSharing: false,
@@ -408,29 +422,51 @@ export function MeetingRoom({ meetingData }) {
         // Get the display name and host status from external user ID
         let displayName = "Unknown";
         let isParticipantHost = false;
-        
+
         if (isLocal) {
-          // For local user, always show "You"
-          displayName = "You";
+          // For local user, always show "You" and use isHost from above
+          displayName = localUserName;
           isParticipantHost = isHost;
         } else {
           // For remote users, use the externalUserId passed from the callback
           if (externalUserId) {
-            // Check if this user is the host
-            isParticipantHost = externalUserId.startsWith('HOST-');
-            
-            // Extract name (skip 'HOST-' prefix if present)
-            const parts = externalUserId.split('-');
-            const namePart = isParticipantHost ? parts[1] : parts[0];
-            displayName = namePart || `User ${attendeeId?.slice(-4)}`;
+            // Check for new format: HOST|email|timestamp|random or USER|email|timestamp|random or GUEST|name|timestamp|random
+            if (externalUserId.includes('|')) {
+              const parts = externalUserId.split('|');
+              const userType = parts[0]; // HOST, USER, or GUEST
+              const identifier = parts[1]; // email or name
+
+              isParticipantHost = userType === 'HOST';
+
+              // Extract display name from identifier
+              if (identifier?.includes('@')) {
+                // If it's an email, extract the username part
+                displayName = identifier.split('@')[0];
+              } else {
+                displayName = identifier || `User ${attendeeId?.slice(-4)}`;
+              }
+            } else {
+              // Fallback for old format: HOST-name-timestamp-random
+              isParticipantHost = externalUserId.startsWith('HOST-');
+              const parts = externalUserId.split('-');
+              const namePart = isParticipantHost ? parts[1] : parts[0];
+              displayName = namePart || `User ${attendeeId?.slice(-4)}`;
+            }
           } else {
             // Fallback: try to get from roster state
             const storedExternalId = attendeeRoster.get(attendeeId);
             if (storedExternalId) {
-              isParticipantHost = storedExternalId.startsWith('HOST-');
-              const parts = storedExternalId.split('-');
-              const namePart = isParticipantHost ? parts[1] : parts[0];
-              displayName = namePart || `User ${attendeeId?.slice(-4)}`;
+              if (storedExternalId.includes('|')) {
+                const parts = storedExternalId.split('|');
+                isParticipantHost = parts[0] === 'HOST';
+                const identifier = parts[1];
+                displayName = identifier?.includes('@') ? identifier.split('@')[0] : identifier;
+              } else {
+                isParticipantHost = storedExternalId.startsWith('HOST-');
+                const parts = storedExternalId.split('-');
+                const namePart = isParticipantHost ? parts[1] : parts[0];
+                displayName = namePart || `User ${attendeeId?.slice(-4)}`;
+              }
             } else {
               displayName = `User ${attendeeId?.slice(-4)}`;
             }
@@ -456,6 +492,7 @@ export function MeetingRoom({ meetingData }) {
           name: displayName,
           isLocal,
           isHost: isParticipantHost,
+          email: isLocal && meetingData?.host?.email ? meetingData.host.email : undefined,
           videoEnabled: false,
           muted: null, // Don't assume - wait for actual status from volume indicator callback
           tileId: null,
@@ -590,7 +627,7 @@ export function MeetingRoom({ meetingData }) {
 
         audioElementRef.current = null;
       }
-      
+
       stopPreviewStream();
       setParticipants([]);
       setIsMuted(true);
@@ -640,7 +677,7 @@ export function MeetingRoom({ meetingData }) {
 
   const startMeetingWithRetry = async (retryCount = 0) => {
     const maxRetries = 3;
-    const retryDelay = 1000 * (retryCount + 1); 
+    const retryDelay = 1000 * (retryCount + 1);
 
     try {
       await startMeeting();
@@ -874,14 +911,14 @@ export function MeetingRoom({ meetingData }) {
             }
             // Try to stop via SDK, but don't worry about errors
             if (meetingSessionRef?.current) {
-              meetingSessionRef.current.audioVideo.stopContentShare().catch(() => {});
+              meetingSessionRef.current.audioVideo.stopContentShare().catch(() => { });
             }
           });
         }
 
         // Start content share
         await meetingSessionRef.current.audioVideo.startContentShare(stream);
-        
+
         // Set state immediately
         setScreenShareState({
           isSharing: true,
@@ -899,7 +936,7 @@ export function MeetingRoom({ meetingData }) {
       } else {
         setConnectionError("Screen sharing failed. Please try again.");
       }
-      
+
       setScreenShareState({
         isSharing: false,
         isMyShare: false,
@@ -946,6 +983,8 @@ export function MeetingRoom({ meetingData }) {
               participants={participants}
               showParticipantsList={showParticipantsList}
               onToggleParticipants={() => setShowParticipantsList(!showParticipantsList)}
+              meetingId={meetingId}
+              isHost={isHost}
             />
 
             <div className="flex-1 p-3 min-h-0">

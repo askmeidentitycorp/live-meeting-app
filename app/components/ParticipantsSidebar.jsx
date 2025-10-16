@@ -11,6 +11,8 @@ export function ParticipantsSidebar({
   localUserName,
   isLocalUserHost
 }) {
+  
+  
   return (
     <div className={`${showParticipantsList ? 'w-72' : 'w-0'} transition-all duration-300 bg-white border-l border-gray-200 overflow-hidden flex flex-col shadow-lg`}>
       {showParticipantsList && (
