@@ -5,6 +5,7 @@ import {
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { getMeeting, updateMeetingHost } from '../../../lib/meetingStorage.js';
+import { createMediaConvertJobForMeeting } from '../../../lib/mediaconvert.js';
 
 const mediaPipelinesClient = new ChimeSDKMediaPipelinesClient({ 
   region: process.env.AWS_REGION 
@@ -31,8 +32,8 @@ export async function POST(req) {
       );
     }
 
-    // Check if user is the host of this meeting
-    const meetingData = getMeeting(meetingId);
+  // Check if user is the host of this meeting
+  const meetingData = await getMeeting(meetingId);
     
     if (!meetingData) {
       return Response.json(
@@ -82,10 +83,20 @@ export async function POST(req) {
       status: "Stopped"
     };
 
-    updateMeetingHost(meetingId, {
+    await updateMeetingHost(meetingId, {
       ...meetingData.host,
       recording: recordingInfo
     });
+
+    // Trigger MediaConvert processing server-side (await result so we can surface errors)
+    let mediaConvertResult = null;
+    try {
+      mediaConvertResult = await createMediaConvertJobForMeeting(meetingId, session.user.email);
+      console.info('MediaConvert job submitted:', mediaConvertResult.jobId);
+    } catch (err) {
+      // Log and continue; the client will get a message that processing will begin but job failed to start
+      console.error('Failed to create MediaConvert job:', err);
+    }
 
     return Response.json({
       success: true,
@@ -96,7 +107,9 @@ export async function POST(req) {
         s3Bucket: recordingInfo.s3Bucket,
         s3Prefix: recordingInfo.s3Prefix,
         status: recordingInfo.status
-      }
+      },
+      mediaConvert: mediaConvertResult ? { jobId: mediaConvertResult.jobId, outputKey: mediaConvertResult.outputKey } : null,
+      message: mediaConvertResult ? "Recording stopped. MediaConvert job submitted." : "Recording stopped. Failed to start MediaConvert job (check server logs)."
     });
 
   } catch (error) {

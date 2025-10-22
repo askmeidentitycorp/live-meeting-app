@@ -27,7 +27,7 @@ export function ParticipantsSidebar({
               </div>
               <button
                 onClick={onToggle}
-                className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-1 rounded transition-colors"
+                className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 p-1 rounded transition-colors cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>

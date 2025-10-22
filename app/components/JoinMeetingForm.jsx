@@ -30,7 +30,7 @@ export default function JoinMeetingForm() {
 
   return (
     <form onSubmit={onSubmit} className="p-6 bg-gray-50 rounded-xl shadow-sm transition-all duration-300 hover:shadow-md">
-      <h2 className="text-xl font-semibold text-gray-800 mb-4">Join by Meeting ID</h2>
+      <h2 className="text-xl font-semibold text-gray-800 mb-4">Join Meeting</h2>
       <div className="space-y-4">
         {error && (
           <div className="p-3 rounded-md bg-red-100 text-red-700 text-sm">{error}</div>

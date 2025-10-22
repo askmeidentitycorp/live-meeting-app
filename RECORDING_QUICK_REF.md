@@ -54,13 +54,7 @@ recordings/{meetingId}/{timestamp}/
 - [x] S3 bucket policy set
 - [x] IAM permissions configured
 
-## 💰 Costs
 
-| Item | Price |
-|------|-------|
-| Recording (per min) | $0.015 per stream |
-| S3 Storage | $0.023 per GB/month |
-| **30-min meeting** | **~$2.70** |
 
 ## 🐛 Quick Troubleshooting
 

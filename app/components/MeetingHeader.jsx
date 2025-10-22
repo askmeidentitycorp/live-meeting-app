@@ -1,7 +1,6 @@
 "use client";
 
 import { Users } from "lucide-react";
-import { ErrorDisplay } from "./ErrorDisplay";
 import { RecordingControls } from "./RecordingControls";
 
 export function MeetingHeader({
@@ -39,7 +38,7 @@ export function MeetingHeader({
           </div>
           <button
             onClick={onToggleParticipants}
-            className={`p-2 rounded transition-colors ${
+            className={`p-2 rounded transition-colors cursor-pointer ${
               showParticipantsList
                 ? 'bg-blue-500 text-white'
                 : 'text-gray-600 hover:bg-gray-200'

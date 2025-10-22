@@ -31,8 +31,8 @@ export async function POST(req) {
       );
     }
 
-    // Check if user is the host of this meeting
-    const meetingData = getMeeting(meetingId);
+  // Check if user is the host of this meeting
+  const meetingData = await getMeeting(meetingId);
     
     if (!meetingData) {
       return Response.json(
@@ -81,12 +81,10 @@ export async function POST(req) {
             MuxType: "AudioOnly"
           },
           Video: {
-            State: "Enabled",
-            MuxType: "VideoOnly"
+            State: "Disabled"
           },
           Content: {
-            State: "Enabled",
-            MuxType: "ContentOnly"
+            State: "Disabled"
           },
           CompositedVideo: {
             State: "Enabled",

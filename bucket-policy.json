@@ -1,0 +1,14 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowChimeMediaPipelineWrite",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "chime.amazonaws.com"
+      },
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::chime-recordings-live-meeting-app-20251017/*"
+    }
+  ]
+}

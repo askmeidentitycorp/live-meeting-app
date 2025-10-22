@@ -12,7 +12,7 @@ export default function NavBar() {
       <div className="mx-auto px-6 py-3 flex items-center justify-between">
         <Link
           href="/"
-          className="text-xl font-semibold tracking-tight text-gray-900 hover:text-gray-700 transition-colors"
+          className="text-xl cursor-pointer font-semibold tracking-tight text-gray-900 hover:text-gray-700 transition-colors"
         >
           Live Meeting
         </Link>
@@ -57,7 +57,7 @@ export default function NavBar() {
           ) : (
             <button
               onClick={() => signIn()}
-              className="px-4 py-2.5 rounded-full bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition-colors shadow-sm"
+              className="px-4 py-2.5 cursor-pointer rounded-full bg-gray-900 text-white text-sm font-medium hover:bg-gray-800 transition-colors shadow-sm"
             >
               Sign in
             </button>

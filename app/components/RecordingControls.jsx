@@ -2,22 +2,24 @@
 
 import { useState, useEffect } from "react";
 import { Radio, Square, Loader2 } from "lucide-react";
+import { useNotifications } from "../contexts/NotificationContext";
 
 export function RecordingControls({ meetingId, isHost }) {
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [recordingStartTime, setRecordingStartTime] = useState(null);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [processingStatus, setProcessingStatus] = useState(null);
+  const [processingProgress, setProcessingProgress] = useState(0);
+  
+  const { addNotification } = useNotifications();
 
-  // Fetch recording status on mount
   useEffect(() => {
     if (isHost) {
       checkRecordingStatus();
     }
   }, [meetingId, isHost]);
 
-  // Update elapsed time
   useEffect(() => {
     let interval;
     if (isRecording && recordingStartTime) {
@@ -29,6 +31,38 @@ export function RecordingControls({ meetingId, isHost }) {
     return () => clearInterval(interval);
   }, [isRecording, recordingStartTime]);
 
+  // Poll for processing status
+  useEffect(() => {
+    if (!isHost || !processingStatus || processingStatus === "COMPLETE" || processingStatus === "ERROR") {
+      return;
+    }
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await fetch(`/api/recording/process?meetingId=${meetingId}`);
+        const data = await response.json();
+
+        if (response.ok) {
+          setProcessingStatus(data.status);
+          setProcessingProgress(data.progress || 0);
+
+          if (data.status === "COMPLETE") {
+            clearInterval(pollInterval);
+            addNotification("Recording saved to S3 in HLS format (adaptive streaming)", "success", 7000);
+          } else if (data.status === "ERROR" || data.status === "CANCELED") {
+            addNotification(`Processing ${data.status.toLowerCase()}`, "error");
+            clearInterval(pollInterval);
+          }
+          // Keep polling if PENDING or SUBMITTED or PROGRESSING
+        }
+      } catch (err) {
+        console.error("Failed to check processing status:", err);
+      }
+    }, 5000); // Poll every 5 seconds (changed from 10)
+
+    return () => clearInterval(pollInterval);
+  }, [isHost, meetingId, processingStatus]);
+
   const checkRecordingStatus = async () => {
     try {
       const res = await fetch(`/api/recording/status?meetingId=${meetingId}`);
@@ -39,6 +73,9 @@ export function RecordingControls({ meetingId, isHost }) {
         if (data.recording?.startedAt) {
           setRecordingStartTime(data.recording.startedAt);
         }
+        if (data.recording?.mediaConvertStatus) {
+          setProcessingStatus(data.recording.mediaConvertStatus);
+        }
       }
     } catch (err) {
       console.error("Failed to check recording status:", err);
@@ -47,7 +84,6 @@ export function RecordingControls({ meetingId, isHost }) {
 
   const handleStartRecording = async () => {
     setIsLoading(true);
-    setError(null);
 
     try {
       const res = await fetch("/api/recording/start", {
@@ -65,9 +101,10 @@ export function RecordingControls({ meetingId, isHost }) {
       setIsRecording(true);
       setRecordingStartTime(data.recording.startedAt);
       setElapsedTime(0);
+      setProcessingStatus(null);
+      addNotification("Recording started", "success");
     } catch (err) {
-      setError(err.message);
-      setTimeout(() => setError(null), 5000);
+      addNotification(err.message, "error");
     } finally {
       setIsLoading(false);
     }
@@ -75,7 +112,6 @@ export function RecordingControls({ meetingId, isHost }) {
 
   const handleStopRecording = async () => {
     setIsLoading(true);
-    setError(null);
 
     try {
       const res = await fetch("/api/recording/stop", {
@@ -93,9 +129,11 @@ export function RecordingControls({ meetingId, isHost }) {
       setIsRecording(false);
       setRecordingStartTime(null);
       setElapsedTime(0);
+      setProcessingStatus("SUBMITTED");
+      setProcessingProgress(0);
+      addNotification("Recording stopped. Processing started...", "info");
     } catch (err) {
-      setError(err.message);
-      setTimeout(() => setError(null), 5000);
+      addNotification(err.message, "error");
     } finally {
       setIsLoading(false);
     }
@@ -118,9 +156,17 @@ export function RecordingControls({ meetingId, isHost }) {
 
   return (
     <div className="flex items-center gap-2">
-      {error && (
-        <div className="absolute top-16 left-1/2 transform -translate-x-1/2 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50">
-          {error}
+      {processingStatus && processingStatus !== "COMPLETE" && (
+        <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span>
+            {processingStatus === "PENDING" 
+              ? "Initializing..." 
+              : processingProgress > 0 
+                ? `${processingProgress}%` 
+                : "Processing..."
+            }
+          </span>
         </div>
       )}
 
@@ -138,12 +184,12 @@ export function RecordingControls({ meetingId, isHost }) {
 
       <button
         onClick={isRecording ? handleStopRecording : handleStartRecording}
-        disabled={isLoading}
-        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+        disabled={isLoading || (processingStatus && processingStatus !== "COMPLETE")}
+        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
           isRecording
             ? 'bg-red-500 hover:bg-red-600 text-white'
             : 'bg-gray-700 hover:bg-gray-800 text-white'
-        } ${isLoading ? 'opacity-60 cursor-not-allowed' : ''}`}
+        } ${(isLoading || (processingStatus && processingStatus !== "COMPLETE")) ? 'opacity-60 cursor-not-allowed' : ''}`}
         title={isRecording ? 'Stop Recording' : 'Start Recording'}
       >
         {isLoading ? (

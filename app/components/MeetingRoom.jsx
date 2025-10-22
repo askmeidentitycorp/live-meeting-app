@@ -20,9 +20,6 @@ import { MeetingControls } from "./MeetingControls";
 export function MeetingRoom({ meetingData }) {
   const { Meeting, Attendee } = meetingData || {};
 
-  console.log(Attendee);
-  
-
   const meetingSessionRef = useRef(null);
   const videoTilesRef = useRef(new Map());
   const containerRef = useRef(null);
@@ -972,6 +969,7 @@ export function MeetingRoom({ meetingData }) {
           isMuted={isMuted}
           onToggleVideo={toggleVideo}
           onToggleMute={toggleMute}
+          meetingId={meetingId}
           onJoinMeeting={startMeetingWithRetry}
         />
       ) : (

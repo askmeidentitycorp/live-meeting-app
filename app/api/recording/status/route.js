@@ -33,7 +33,7 @@ export async function GET(req) {
     }
 
     // Get meeting data
-    const meetingData = getMeeting(meetingId);
+    const meetingData = await getMeeting(meetingId);
     
     if (!meetingData) {
       return Response.json(

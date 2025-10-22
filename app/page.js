@@ -1,16 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
+import { useSearchParams } from "next/navigation";
 import NavBar from "./components/NavBar";
 import JoinMeetingForm from "./components/JoinMeetingForm";
 import { ArrowLeft } from "lucide-react";
 
-export default function Home() {
-  const { data: session } = useSession();
+export default function Home() {  
+const { data: session } = useSession();
+  const searchParams = useSearchParams();
+  const meetingIdParam = searchParams?.get("id");
   const [showCreate, setShowCreate] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
   const [creating, setCreating] = useState(false);
+
+  useEffect(() => {
+    if (session?.user && meetingIdParam) {
+      const nameToUse = session?.user?.name || "User";
+      window.location.href = `/meeting/${meetingIdParam}?name=${encodeURIComponent(nameToUse)}`;
+    } else if (!session?.user && meetingIdParam) {
+      setShowJoin(true);
+    }
+  }, [session, meetingIdParam]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-gray-100">
@@ -19,7 +31,7 @@ export default function Home() {
         {(showCreate || showJoin) && (
           <button
             type="button"
-            className="absolute left-2 top-2 sm:left-8 sm:top-8 z-10 w-11 h-11 flex items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 shadow transition-colors duration-150 cursor-pointer"
+            className="absolute left-2 top-2  sm:left-8 sm:top-8 z-10 w-11 h-11 flex items-center justify-center rounded-full border border-gray-300 bg-white text-gray-700 hover:bg-gray-100 shadow transition-colors duration-150 cursor-pointer"
             onClick={() => {
               setShowCreate(false);
               setShowJoin(false);
@@ -38,10 +50,10 @@ export default function Home() {
           </header>
 
           {/* Clean landing buttons */}
-          {!showCreate && !showJoin && (
+          {!showCreate && !showJoin && !meetingIdParam && (
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <button
-                className={`w-full sm:w-auto px-6 py-3 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 flex items-center justify-center gap-2 ${creating ? 'opacity-60 cursor-not-allowed' : ''}`}
+                className={`w-full sm:w-auto px-6 cursor-pointer py-3 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 flex items-center justify-center gap-2 ${creating ? 'opacity-60 cursor-not-allowed' : ''}`}
                 onClick={async () => {
                   if (!session?.user) {
                     window.location.assign('/auth/signin');
@@ -91,14 +103,14 @@ export default function Home() {
               `}</style>
               </button>
               <button
-                className="w-full sm:w-auto px-6 py-3 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700"
+                className="w-full sm:w-auto cursor-pointer px-6 py-3 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700"
                 onClick={() => setShowJoin(true)}
               >
                 Join a Meeting
               </button>
             </div>
           )}
-          {showJoin && (
+          {(showJoin || meetingIdParam) && (
             <div className="mt-6">
               <JoinMeetingForm />
             </div>
