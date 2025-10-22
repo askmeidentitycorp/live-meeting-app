@@ -62,21 +62,76 @@ export async function createMediaConvertJobForMeeting(meetingId, invokingUserEma
       })),
       OutputGroups: [
         {
-          Name: "File Group",
+          Name: "HLS Group",
           OutputGroupSettings: {
-            Type: "FILE_GROUP_SETTINGS",
-            FileGroupSettings: { Destination: `s3://${bucket}/${outputPrefix}` }
+            Type: "HLS_GROUP_SETTINGS",
+            HlsGroupSettings: {
+              Destination: `s3://${bucket}/${outputPrefix}`,
+              SegmentLength: 10,
+              MinSegmentLength: 0,
+              ManifestDurationFormat: "INTEGER",
+              SegmentControl: "SEGMENTED_FILES",
+              ProgramDateTime: "EXCLUDE",
+              TimedMetadataId3Period: 10,
+              CodecSpecification: "RFC_4281",
+              OutputSelection: "MANIFESTS_AND_SEGMENTS",
+              ManifestCompression: "NONE",
+              StreamInfResolution: "INCLUDE"
+            }
           },
           Outputs: [
             {
-              ContainerSettings: { Container: "MP4", Mp4Settings: { CslgAtom: "INCLUDE", FreeSpaceBox: "EXCLUDE", MoovPlacement: "PROGRESSIVE_DOWNLOAD" } },
+              NameModifier: "_720p",
+              ContainerSettings: {
+                Container: "M3U8",
+                M3u8Settings: {
+                  AudioFramesPerPes: 4,
+                  PcrControl: "PCR_EVERY_PES_PACKET",
+                  PmtPid: 480,
+                  PrivateMetadataPid: 503,
+                  ProgramNumber: 1,
+                  PatInterval: 0,
+                  PmtInterval: 0,
+                  Scte35Source: "NONE",
+                  NielsenId3: "NONE",
+                  TimedMetadata: "NONE",
+                  VideoPid: 481,
+                  AudioPids: [482, 483, 484, 485, 486, 487, 488, 489, 490, 491, 492]
+                }
+              },
               VideoDescription: {
-                CodecSettings: { Codec: "H_264", H264Settings: { MaxBitrate: 5000000, RateControlMode: "QVBR", SceneChangeDetect: "TRANSITION_DETECTION", QualityTuningLevel: "SINGLE_PASS_HQ" } },
+                CodecSettings: {
+                  Codec: "H_264",
+                  H264Settings: {
+                    MaxBitrate: 5000000,
+                    RateControlMode: "QVBR",
+                    SceneChangeDetect: "TRANSITION_DETECTION",
+                    QualityTuningLevel: "SINGLE_PASS_HQ",
+                    CodecProfile: "HIGH",
+                    CodecLevel: "LEVEL_4_1",
+                    GopSize: 90,
+                    GopSizeUnits: "FRAMES",
+                    NumberBFramesBetweenReferenceFrames: 2,
+                    Syntax: "DEFAULT"
+                  }
+                },
                 Width: 1280,
                 Height: 720
               },
-              AudioDescriptions: [ { CodecSettings: { Codec: "AAC", AacSettings: { Bitrate: 128000, CodingMode: "CODING_MODE_2_0", SampleRate: 48000 } } } ],
-              NameModifier: "recording"
+              AudioDescriptions: [
+                {
+                  CodecSettings: {
+                    Codec: "AAC",
+                    AacSettings: {
+                      Bitrate: 128000,
+                      CodingMode: "CODING_MODE_2_0",
+                      SampleRate: 48000,
+                      CodecProfile: "LC",
+                      RateControlMode: "CBR"
+                    }
+                  }
+                }
+              ]
             }
           ]
         }
@@ -89,7 +144,7 @@ export async function createMediaConvertJobForMeeting(meetingId, invokingUserEma
   const jobResponse = await mediaConvertClient.send(createJobCommand);
 
   const jobId = jobResponse.Job?.Id;
-  const outputKey = `${outputPrefix}recording.mp4`;
+  const outputKey = `${outputPrefix}index.m3u8`;
 
   // Update meeting data with MediaConvert job info
   await updateMeetingHost(meetingId, {
