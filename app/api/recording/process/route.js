@@ -1,8 +1,15 @@
+import { 
+  MediaConvertClient, 
+  CreateJobCommand,
+  GetJobCommand 
+} from "@aws-sdk/client-mediaconvert";
+import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { getMeeting, updateMeetingHost } from '../../../lib/meetingStorage.js';
-import { createMediaConvertJobForMeeting, getMediaConvertJobStatus } from '../../../lib/mediaconvert.js';
-import { MediaConvertClient, GetJobCommand } from "@aws-sdk/client-mediaconvert";
+
+const s3Client = new S3Client({ region: process.env.AWS_REGION });
+import { createMediaConvertJobForMeeting } from '../../../lib/mediaconvert.js';
 
 export async function POST(req) {
   try {
@@ -24,6 +31,69 @@ export async function POST(req) {
       );
     }
 
+    const meetingData = await getMeeting(meetingId);
+    
+    if (!meetingData) {
+      return Response.json(
+        { error: "Meeting not found" }, 
+        { status: 404 }
+      );
+    }
+
+    // Verify user is the host
+    if (meetingData.host?.email !== session.user.email) {
+      return Response.json(
+        { error: "Only the meeting host can process recordings" }, 
+        { status: 403 }
+      );
+    }
+
+    const recording = meetingData.host?.recording;
+    if (!recording) {
+      return Response.json(
+        { error: "No recording found for this meeting" }, 
+        { status: 404 }
+      );
+    }
+
+    const bucket = recording.s3Bucket;
+    const inputPrefix = `${recording.s3Prefix}/composited-video/`;
+    const outputPrefix = `${recording.s3Prefix}/final-video/`;
+
+    // List all MP4 clips
+    const listCommand = new ListObjectsV2Command({
+      Bucket: bucket,
+      Prefix: inputPrefix
+    });
+
+    const listResponse = await s3Client.send(listCommand);
+    
+    if (!listResponse.Contents || listResponse.Contents.length === 0) {
+      return Response.json(
+        { error: "No video clips found to process" }, 
+        { status: 404 }
+      );
+    }
+
+    const clips = listResponse.Contents
+      .filter(obj => obj.Key.endsWith('.mp4'))
+      .sort((a, b) => a.Key.localeCompare(b.Key));
+    
+    if (clips.length === 0) {
+      return Response.json(
+        { error: "No MP4 clips found" }, 
+        { status: 404 }
+      );
+    }
+
+    // MediaConvert endpoint
+    const endpoint = process.env.AWS_MEDIACONVERT_ENDPOINT || 'https://mediaconvert.us-east-1.amazonaws.com';
+    
+    const mediaConvertClient = new MediaConvertClient({ 
+      region: process.env.AWS_REGION,
+      endpoint: endpoint
+    });
+
     // Use the centralized helper to create the job
     const result = await createMediaConvertJobForMeeting(meetingId, session.user.email);
 
@@ -33,7 +103,7 @@ export async function POST(req) {
       status: "SUBMITTED",
       clipsCount: result.clipsCount,
       outputPath: result.outputKey,
-      message: "MediaConvert job submitted. HLS adaptive streaming will be available soon."
+      message: "MediaConvert job submitted. Processing will complete in a few minutes."
     });
 
   } catch (error) {

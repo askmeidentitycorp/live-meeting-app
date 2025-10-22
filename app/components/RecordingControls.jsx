@@ -40,6 +40,14 @@ export function RecordingControls({ meetingId, isHost }) {
     const pollInterval = setInterval(async () => {
       try {
         const response = await fetch(`/api/recording/process?meetingId=${meetingId}`);
+        
+        // Check if response is JSON
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          console.error("Expected JSON response but got:", contentType);
+          return;
+        }
+        
         const data = await response.json();
 
         if (response.ok) {
@@ -48,7 +56,7 @@ export function RecordingControls({ meetingId, isHost }) {
 
           if (data.status === "COMPLETE") {
             clearInterval(pollInterval);
-            addNotification("Recording saved to S3 in HLS format (adaptive streaming)", "success", 7000);
+            addNotification("Recording saved to S3", "success");
           } else if (data.status === "ERROR" || data.status === "CANCELED") {
             addNotification(`Processing ${data.status.toLowerCase()}`, "error");
             clearInterval(pollInterval);
@@ -58,7 +66,7 @@ export function RecordingControls({ meetingId, isHost }) {
       } catch (err) {
         console.error("Failed to check processing status:", err);
       }
-    }, 5000); // Poll every 5 seconds (changed from 10)
+    }, 5000); // Poll every 5 seconds
 
     return () => clearInterval(pollInterval);
   }, [isHost, meetingId, processingStatus]);
@@ -66,6 +74,14 @@ export function RecordingControls({ meetingId, isHost }) {
   const checkRecordingStatus = async () => {
     try {
       const res = await fetch(`/api/recording/status?meetingId=${meetingId}`);
+      
+      // Check if response is JSON
+      const contentType = res.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        console.error("Expected JSON response but got:", contentType);
+        return;
+      }
+      
       const data = await res.json();
       
       if (res.ok) {
