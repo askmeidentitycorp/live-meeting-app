@@ -40,7 +40,6 @@ export async function POST(req) {
       );
     }
 
-    // Verify user is the host
     if (meetingData.host?.email !== session.user.email) {
       return Response.json(
         { error: "Only the meeting host can process recordings" }, 
@@ -86,7 +85,6 @@ export async function POST(req) {
       );
     }
 
-    // MediaConvert endpoint
     const endpoint = process.env.AWS_MEDIACONVERT_ENDPOINT || 'https://mediaconvert.us-east-1.amazonaws.com';
     
     const mediaConvertClient = new MediaConvertClient({ 
@@ -94,7 +92,6 @@ export async function POST(req) {
       endpoint: endpoint
     });
 
-    // Use the centralized helper to create the job
     const result = await createMediaConvertJobForMeeting(meetingId, session.user.email);
 
     return Response.json({
@@ -115,7 +112,6 @@ export async function POST(req) {
   }
 }
 
-// GET endpoint to check job status
 export async function GET(req) {
   try {
     const session = await getServerSession(authOptions);
@@ -155,7 +151,6 @@ export async function GET(req) {
       );
     }
 
-    // If no MediaConvert job yet, return pending status
     if (!recording.mediaConvertJobId) {
       return Response.json({
         success: true,
@@ -179,7 +174,6 @@ export async function GET(req) {
     const status = jobResponse.Job.Status;
     const progress = jobResponse.Job.JobPercentComplete || 0;
 
-    // Update meeting data with current status
     if (status === "COMPLETE" || status === "ERROR" || status === "CANCELED") {
       await updateMeetingHost(meetingId, {
         ...meetingData.host,

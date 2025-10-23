@@ -11,9 +11,7 @@ const mediaPipelinesClient = new ChimeSDKMediaPipelinesClient({
 });
 
 export async function GET(req) {
-  // Wrap EVERYTHING to ensure JSON response even on unexpected errors
   try {
-    // Enforce authentication
     const session = await getServerSession(authOptions);
     
     if (!session || !session.user) {
@@ -33,7 +31,6 @@ export async function GET(req) {
       );
     }
 
-    // Get meeting data
     const meetingData = await getMeeting(meetingId);
     
     if (!meetingData) {
@@ -43,10 +40,8 @@ export async function GET(req) {
       );
     }
 
-    // Check if user is the host
     const isHost = meetingData.host?.email === session.user.email;
 
-    // Return recording status from stored data
     const recordingInfo = meetingData.host?.recording;
 
     if (!recordingInfo) {
@@ -56,7 +51,6 @@ export async function GET(req) {
       });
     }
 
-    // If recording is in progress, fetch live status from AWS
     if (recordingInfo.isRecording && recordingInfo.pipelineId) {
       try {
         const command = new GetMediaCapturePipelineCommand({
@@ -77,7 +71,6 @@ export async function GET(req) {
           }
         });
       } catch (error) {
-        // If pipeline not found, it might have ended
         console.error("Error fetching pipeline status:", error);
         return Response.json({
           isRecording: false,
