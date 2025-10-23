@@ -61,12 +61,11 @@ export function RecordingControls({ meetingId, isHost }) {
             addNotification(`Processing ${data.status.toLowerCase()}`, "error");
             clearInterval(pollInterval);
           }
-          // Keep polling if PENDING or SUBMITTED or PROGRESSING
         }
       } catch (err) {
         console.error("Failed to check processing status:", err);
       }
-    }, 5000); // Poll every 5 seconds
+    }, 5000);
 
     return () => clearInterval(pollInterval);
   }, [isHost, meetingId, processingStatus]);
@@ -74,18 +73,15 @@ export function RecordingControls({ meetingId, isHost }) {
   const checkRecordingStatus = async () => {
     try {
       const res = await fetch(`/api/recording/status?meetingId=${meetingId}`);
-      
-      // Check if response is JSON
       const contentType = res.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
-        console.error("Expected JSON response but got:", contentType);
         return;
       }
       
       const data = await res.json();
       
       if (res.ok) {
-        setIsRecording(data.isRecording);
+        setIsRecording(data.isRecording || false);
         if (data.recording?.startedAt) {
           setRecordingStartTime(data.recording.startedAt);
         }
@@ -94,7 +90,8 @@ export function RecordingControls({ meetingId, isHost }) {
         }
       }
     } catch (err) {
-      console.error("Failed to check recording status:", err);
+      // Silently handle errors during status check
+      console.debug("Recording status check skipped:", err.message);
     }
   };
 
