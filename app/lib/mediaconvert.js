@@ -9,17 +9,12 @@ import { getMeeting, updateMeetingHost } from './meetingStorage.js';
 
 const s3Client = new S3Client({ region: process.env.AWS_REGION });
 
-/**
- * Create a MediaConvert job for the given meetingId. Validates that the invoking user is the meeting host.
- * Returns the created jobId and output key.
- */
 export async function createMediaConvertJobForMeeting(meetingId, invokingUserEmail) {
   if (!meetingId) throw new Error('meetingId is required');
 
   const meetingData = await getMeeting(meetingId);
   if (!meetingData) throw new Error('Meeting not found');
 
-  // Verify user is the host
   if (meetingData.host?.email !== invokingUserEmail) {
     throw new Error('Only the meeting host can process recordings');
   }
@@ -28,26 +23,39 @@ export async function createMediaConvertJobForMeeting(meetingId, invokingUserEma
   if (!recording) throw new Error('No recording found for this meeting');
 
   const bucket = recording.s3Bucket;
-  const inputPrefix = `${recording.s3Prefix}/composited-video/`;
+  // Normalize input prefix: some records store the base prefix, others already include composited-video
+  const basePrefix = recording.s3Prefix.replace(/\/+$/g, '');
+  const inputPrefix = basePrefix.endsWith('/composited-video')
+    ? `${basePrefix}/`
+    : `${basePrefix}/composited-video/`;
   const outputPrefix = `${recording.s3Prefix}/final-video/`;
 
-  // List MP4 clips
-  const listCommand = new ListObjectsV2Command({ Bucket: bucket, Prefix: inputPrefix });
-  const listResponse = await s3Client.send(listCommand);
+  // Try listing MP4 clips with a small retry loop in case fragments are still being uploaded
+  const maxListAttempts = 6; // ~12 seconds max (with 2s interval)
+  let listResponse = null;
+  let clips = [];
+  for (let attempt = 1; attempt <= maxListAttempts; attempt++) {
+    try {
+      const listCommand = new ListObjectsV2Command({ Bucket: bucket, Prefix: inputPrefix });
+      listResponse = await s3Client.send(listCommand);
+      clips = (listResponse.Contents || [])
+        .filter(obj => obj.Key.endsWith('.mp4'))
+        .sort((a, b) => a.Key.localeCompare(b.Key));
 
-  if (!listResponse.Contents || listResponse.Contents.length === 0) {
+      if (clips.length > 0) break;
+      console.info(`No MP4 clips found on attempt ${attempt}/${maxListAttempts} for prefix=${inputPrefix}. Retrying...`);
+      // wait before retrying
+      await new Promise(r => setTimeout(r, 2000));
+    } catch (listErr) {
+      console.error('Error listing S3 objects for MediaConvert input:', listErr);
+      // wait and retry
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+
+  if (!clips || clips.length === 0) {
     throw new Error('No video clips found to process');
   }
-
-  const clips = listResponse.Contents
-    .filter(obj => obj.Key.endsWith('.mp4'))
-    .sort((a, b) => a.Key.localeCompare(b.Key));
-
-  if (clips.length === 0) {
-    throw new Error('No MP4 clips found');
-  }
-
-  // Resolve the MediaConvert endpoint. Prefer explicit env var, otherwise try DescribeEndpoints
   let endpoint = process.env.AWS_MEDIACONVERT_ENDPOINT;
   if (!endpoint) {
     try {
@@ -157,7 +165,6 @@ export async function createMediaConvertJobForMeeting(meetingId, invokingUserEma
     AccelerationSettings: { Mode: "DISABLED" }
   };
 
-  // Log the list of clips for debugging (helpful when only one clip ends up in final output)
   const clipKeys = clips.map(c => c.Key);
   console.info(`Creating MediaConvert job for meeting=${meetingId} with ${clips.length} clips`, clipKeys.slice(0, 50));
 
@@ -174,7 +181,6 @@ export async function createMediaConvertJobForMeeting(meetingId, invokingUserEma
   const jobId = jobResponse.Job?.Id;
   const outputKey = `${outputPrefix}index.m3u8`;
 
-  // Update meeting data with MediaConvert job info
   await updateMeetingHost(meetingId, {
     ...meetingData.host,
     recording: {
@@ -187,7 +193,6 @@ export async function createMediaConvertJobForMeeting(meetingId, invokingUserEma
     }
   });
 
-  // Return a small job summary and the clip keys for diagnostics
   return {
     jobId,
     outputKey,
