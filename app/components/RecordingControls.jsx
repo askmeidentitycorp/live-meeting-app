@@ -37,20 +37,45 @@ export function RecordingControls({ meetingId, isHost }) {
       return;
     }
 
+    let attempts = 0;
+    const MAX_ATTEMPTS = 24; // 2 minutes at 5s interval
+
     const pollInterval = setInterval(async () => {
       try {
         const response = await fetch(`/api/recording/process?meetingId=${meetingId}`);
-        
-        // Check if response is JSON
         const contentType = response.headers.get("content-type");
         if (!contentType || !contentType.includes("application/json")) {
           console.error("Expected JSON response but got:", contentType);
+          attempts += 1;
+          if (attempts >= MAX_ATTEMPTS) {
+            addNotification("Processing is taking too long — please check server logs.", "warning");
+            setProcessingStatus("ERROR");
+            clearInterval(pollInterval);
+          }
           return;
         }
-        
+
         const data = await response.json();
 
         if (response.ok) {
+          // If server responds with PENDING repeatedly include S3 diagnostics
+          if (data.status === "PENDING") {
+            attempts += 1;
+            // Optionally surface s3Clips to the UI as a debug notification (kept short)
+            if (attempts === 1 && data.s3Clips && data.s3Clips.length) {
+              const sample = data.s3Clips.slice(0, 3).map(s => s.split('/').pop()).join(', ');
+              addNotification(`Found ${data.s3Clips.length} clips: ${sample}`, "info");
+            }
+
+            if (attempts >= MAX_ATTEMPTS) {
+              addNotification("Processing hasn't started after a while — check server logs or AWS MediaConvert.", "error");
+              setProcessingStatus("ERROR");
+              clearInterval(pollInterval);
+            }
+            return;
+          }
+
+          // Normal progression
           setProcessingStatus(data.status);
           setProcessingProgress(data.progress || 0);
 
@@ -64,6 +89,12 @@ export function RecordingControls({ meetingId, isHost }) {
         }
       } catch (err) {
         console.error("Failed to check processing status:", err);
+        attempts += 1;
+        if (attempts >= MAX_ATTEMPTS) {
+          addNotification("Processing poll failed repeatedly — check server logs.", "error");
+          setProcessingStatus("ERROR");
+          clearInterval(pollInterval);
+        }
       }
     }, 5000);
 
