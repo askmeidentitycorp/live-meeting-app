@@ -1,7 +1,8 @@
 import { 
   MediaConvertClient, 
   CreateJobCommand,
-  GetJobCommand 
+  GetJobCommand,
+  DescribeEndpointsCommand
 } from "@aws-sdk/client-mediaconvert";
 import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getMeeting, updateMeetingHost } from './meetingStorage.js';
@@ -46,7 +47,23 @@ export async function createMediaConvertJobForMeeting(meetingId, invokingUserEma
     throw new Error('No MP4 clips found');
   }
 
-  const endpoint = process.env.AWS_MEDIACONVERT_ENDPOINT || 'https://mediaconvert.us-east-1.amazonaws.com';
+  // Resolve the MediaConvert endpoint. Prefer explicit env var, otherwise try DescribeEndpoints
+  let endpoint = process.env.AWS_MEDIACONVERT_ENDPOINT;
+  if (!endpoint) {
+    try {
+      const probeClient = new MediaConvertClient({ region: process.env.AWS_REGION });
+      const desc = await probeClient.send(new DescribeEndpointsCommand({}));
+      const found = desc?.Endpoints?.[0]?.Url;
+      if (found) {
+        endpoint = found;
+        console.info('Discovered MediaConvert endpoint:', endpoint);
+      }
+    } catch (epErr) {
+      console.debug('Could not discover MediaConvert endpoint via DescribeEndpoints:', epErr?.message || epErr);
+    }
+  }
+
+  endpoint = endpoint || 'https://mediaconvert.us-east-1.amazonaws.com';
   const mediaConvertClient = new MediaConvertClient({ region: process.env.AWS_REGION, endpoint });
 
   const jobParams = {
@@ -150,7 +167,6 @@ export async function createMediaConvertJobForMeeting(meetingId, invokingUserEma
     jobResponse = await mediaConvertClient.send(createJobCommand);
   } catch (err) {
     console.error(`MediaConvert create job failed for meeting=${meetingId}; clips=${clips.length}`, err);
-    // Throw a clearer error so callers can include it in responses/logs
     const message = err?.message || JSON.stringify(err);
     throw new Error(`MediaConvert createJob error: ${message}`);
   }
