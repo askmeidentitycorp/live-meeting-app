@@ -145,7 +145,15 @@ export async function createMediaConvertJobForMeeting(meetingId, invokingUserEma
   console.info(`Creating MediaConvert job for meeting=${meetingId} with ${clips.length} clips`, clipKeys.slice(0, 50));
 
   const createJobCommand = new CreateJobCommand(jobParams);
-  const jobResponse = await mediaConvertClient.send(createJobCommand);
+  let jobResponse;
+  try {
+    jobResponse = await mediaConvertClient.send(createJobCommand);
+  } catch (err) {
+    console.error(`MediaConvert create job failed for meeting=${meetingId}; clips=${clips.length}`, err);
+    // Throw a clearer error so callers can include it in responses/logs
+    const message = err?.message || JSON.stringify(err);
+    throw new Error(`MediaConvert createJob error: ${message}`);
+  }
 
   const jobId = jobResponse.Job?.Id;
   const outputKey = `${outputPrefix}index.m3u8`;
