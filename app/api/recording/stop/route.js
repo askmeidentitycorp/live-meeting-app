@@ -13,7 +13,6 @@ const mediaPipelinesClient = new ChimeSDKMediaPipelinesClient({
 
 export async function POST(req) {
   try {
-    // Enforce authentication
     const session = await getServerSession(authOptions);
     
     if (!session || !session.user) {
@@ -32,7 +31,6 @@ export async function POST(req) {
       );
     }
 
-  // Check if user is the host of this meeting
   const meetingData = await getMeeting(meetingId);
     
     if (!meetingData) {
@@ -50,7 +48,6 @@ export async function POST(req) {
       );
     }
 
-    // Check if recording is in progress
     if (!meetingData.host?.recording?.isRecording) {
       return Response.json(
         { error: "No recording in progress" }, 
@@ -67,14 +64,12 @@ export async function POST(req) {
       );
     }
 
-    // Delete (stop) the media capture pipeline
     const command = new DeleteMediaCapturePipelineCommand({
       MediaPipelineId: pipelineId
     });
 
     await mediaPipelinesClient.send(command);
 
-    // Update meeting data
     const recordingInfo = {
       ...meetingData.host.recording,
       isRecording: false,
@@ -88,14 +83,13 @@ export async function POST(req) {
       recording: recordingInfo
     });
 
-    // Trigger MediaConvert processing server-side (await result so we can surface errors)
     let mediaConvertResult = null;
     try {
       mediaConvertResult = await createMediaConvertJobForMeeting(meetingId, session.user.email);
       console.info('MediaConvert job submitted:', mediaConvertResult.jobId);
     } catch (err) {
-      // Log and continue; the client will get a message that processing will begin but job failed to start
       console.error('Failed to create MediaConvert job:', err);
+      mediaConvertResult = { error: err?.message || String(err) };
     }
 
     return Response.json({
@@ -108,8 +102,8 @@ export async function POST(req) {
         s3Prefix: recordingInfo.s3Prefix,
         status: recordingInfo.status
       },
-      mediaConvert: mediaConvertResult ? { jobId: mediaConvertResult.jobId, outputKey: mediaConvertResult.outputKey } : null,
-      message: mediaConvertResult ? "Recording stopped. MediaConvert job submitted." : "Recording stopped. Failed to start MediaConvert job (check server logs)."
+      mediaConvert: mediaConvertResult && mediaConvertResult.jobId ? { jobId: mediaConvertResult.jobId, outputKey: mediaConvertResult.outputKey } : mediaConvertResult,
+      message: mediaConvertResult && mediaConvertResult.jobId ? "Recording stopped. MediaConvert job submitted." : `Recording stopped. MediaConvert job not created: ${mediaConvertResult?.error || 'unknown error'}`
     });
 
   } catch (error) {

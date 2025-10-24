@@ -140,6 +140,10 @@ export async function createMediaConvertJobForMeeting(meetingId, invokingUserEma
     AccelerationSettings: { Mode: "DISABLED" }
   };
 
+  // Log the list of clips for debugging (helpful when only one clip ends up in final output)
+  const clipKeys = clips.map(c => c.Key);
+  console.info(`Creating MediaConvert job for meeting=${meetingId} with ${clips.length} clips`, clipKeys.slice(0, 50));
+
   const createJobCommand = new CreateJobCommand(jobParams);
   const jobResponse = await mediaConvertClient.send(createJobCommand);
 
@@ -159,7 +163,18 @@ export async function createMediaConvertJobForMeeting(meetingId, invokingUserEma
     }
   });
 
-  return { jobId, outputKey, clipsCount: clips.length };
+  // Return a small job summary and the clip keys for diagnostics
+  return {
+    jobId,
+    outputKey,
+    clipsCount: clips.length,
+    clips: clipKeys,
+    rawJob: {
+      id: jobResponse.Job?.Id,
+      arn: jobResponse.Job?.Arn,
+      status: jobResponse.Job?.Status
+    }
+  };
 }
 
 export async function getMediaConvertJobStatus(jobId) {

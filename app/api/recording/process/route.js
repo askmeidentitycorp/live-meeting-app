@@ -100,6 +100,8 @@ export async function POST(req) {
       status: "SUBMITTED",
       clipsCount: result.clipsCount,
       outputPath: result.outputKey,
+      clips: result.clips || [],
+      job: result.rawJob || null,
       message: "MediaConvert job submitted. Processing will complete in a few minutes."
     });
 
@@ -152,12 +154,30 @@ export async function GET(req) {
     }
 
     if (!recording.mediaConvertJobId) {
-      return Response.json({
-        success: true,
-        status: "PENDING",
-        progress: 0,
-        message: "Recording stopped. Processing will begin shortly."
-      });
+      // No job has been created yet. Attempt to create it automatically
+      // (helps when the stop route failed to start MediaConvert).
+      try {
+        const result = await createMediaConvertJobForMeeting(meetingId, session.user.email);
+        return Response.json({
+          success: true,
+          jobId: result.jobId,
+          status: "SUBMITTED",
+          progress: 0,
+          outputPath: result.outputKey,
+          clips: result.clips || [],
+          job: result.rawJob || null,
+          message: "MediaConvert job submitted. Processing will complete in a few minutes."
+        });
+      } catch (err) {
+        console.error("Auto-create MediaConvert job failed:", err);
+        // Fall back to telling the client processing is pending.
+        return Response.json({
+          success: true,
+          status: "PENDING",
+          progress: 0,
+          message: "Recording stopped. Processing will begin shortly."
+        });
+      }
     }
 
     const jobId = recording.mediaConvertJobId;
