@@ -170,13 +170,32 @@ export async function GET(req) {
         });
       } catch (err) {
         console.error("Auto-create MediaConvert job failed:", err);
-        // Fall back to telling the client processing is pending.
-        return Response.json({
-          success: true,
-          status: "PENDING",
-          progress: 0,
-          message: "Recording stopped. Processing will begin shortly."
-        });
+        // Fall back to telling the client processing is pending and include S3 listing for diagnostics
+        try {
+          const bucket = recording.s3Bucket;
+          const inputPrefix = `${recording.s3Prefix}/composited-video/`;
+          const listCmd = new ListObjectsV2Command({ Bucket: bucket, Prefix: inputPrefix });
+          const listResp = await s3Client.send(listCmd);
+          const s3Keys = (listResp.Contents || []).map(o => o.Key).slice(0, 200);
+
+          return Response.json({
+            success: true,
+            status: "PENDING",
+            progress: 0,
+            message: "Recording stopped. Processing will begin shortly.",
+            s3Clips: s3Keys,
+            s3Bucket: bucket,
+            s3Prefix: inputPrefix
+          });
+        } catch (s3err) {
+          console.error('Failed to list S3 objects for diagnostics:', s3err);
+          return Response.json({
+            success: true,
+            status: "PENDING",
+            progress: 0,
+            message: "Recording stopped. Processing will begin shortly."
+          });
+        }
       }
     }
 
