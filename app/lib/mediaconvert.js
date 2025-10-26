@@ -4,78 +4,202 @@ import {
   GetJobCommand,
   DescribeEndpointsCommand
 } from "@aws-sdk/client-mediaconvert";
-import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { S3Client } from "@aws-sdk/client-s3";
 import { getMeeting, updateMeetingHost } from './meetingStorage.js';
+import { getConfig } from './recording/config.js';
+import { createStabilityChecker, S3StabilityError } from './recording/s3StabilityChecker.js';
 
 const s3Client = new S3Client({ region: process.env.AWS_REGION });
 
+// Generate simple correlation ID
+function generateCorrelationId() {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
 export async function createMediaConvertJobForMeeting(meetingId, invokingUserEmail) {
-  if (!meetingId) throw new Error('meetingId is required');
+  const correlationId = generateCorrelationId();
+  const config = getConfig();
+  const startTime = Date.now();
 
-  const meetingData = await getMeeting(meetingId);
-  if (!meetingData) throw new Error('Meeting not found');
-
-  if (meetingData.host?.email !== invokingUserEmail) {
-    throw new Error('Only the meeting host can process recordings');
-  }
-
-  const recording = meetingData.host?.recording;
-  if (!recording) throw new Error('No recording found for this meeting');
-
-  const bucket = recording.s3Bucket;
-  // Normalize input prefix: some records store the base prefix, others already include composited-video
-  const basePrefix = recording.s3Prefix.replace(/\/+$/g, '');
-  const inputPrefix = basePrefix.endsWith('/composited-video')
-    ? `${basePrefix}/`
-    : `${basePrefix}/composited-video/`;
-  const outputPrefix = `${recording.s3Prefix}/final-video/`;
-
-  // Try listing MP4 clips with a small retry loop in case fragments are still being uploaded
-  const maxListAttempts = 6; // ~12 seconds max (with 2s interval)
-  let listResponse = null;
-  let clips = [];
-  for (let attempt = 1; attempt <= maxListAttempts; attempt++) {
-    try {
-      const listCommand = new ListObjectsV2Command({ Bucket: bucket, Prefix: inputPrefix });
-      listResponse = await s3Client.send(listCommand);
-      clips = (listResponse.Contents || [])
-        .filter(obj => obj.Key.endsWith('.mp4'))
-        .sort((a, b) => a.Key.localeCompare(b.Key));
-
-      if (clips.length > 0) break;
-      console.info(`No MP4 clips found on attempt ${attempt}/${maxListAttempts} for prefix=${inputPrefix}. Retrying...`);
-      // wait before retrying
-      await new Promise(r => setTimeout(r, 2000));
-    } catch (listErr) {
-      console.error('Error listing S3 objects for MediaConvert input:', listErr);
-      // wait and retry
-      await new Promise(r => setTimeout(r, 2000));
+  try {
+    // Validate inputs
+    if (!meetingId) {
+      throw new Error('meetingId is required');
     }
+
+    console.info(`[MediaConvert] Starting job creation for meeting=${meetingId}, correlation=${correlationId}`);
+
+    // Fetch meeting data
+    const meetingData = await getMeeting(meetingId);
+    if (!meetingData) {
+      throw new Error('Meeting not found');
+    }
+
+    // Verify authorization
+    if (meetingData.host?.email !== invokingUserEmail) {
+      throw new Error('Only the meeting host can process recordings');
+    }
+
+    const recording = meetingData.host?.recording;
+    if (!recording) {
+      throw new Error('No recording found for this meeting');
+    }
+
+    // Prepare S3 paths
+    const bucket = recording.s3Bucket;
+    const basePrefix = recording.s3Prefix.replace(/\/+$/g, '');
+    const inputPrefix = basePrefix.endsWith('/composited-video')
+      ? `${basePrefix}/`
+      : `${basePrefix}/composited-video/`;
+    const outputPrefix = `${recording.s3Prefix}/final-video/`;
+
+    console.info(`[MediaConvert] S3 paths: bucket=${bucket}, inputPrefix=${inputPrefix}`);
+
+    // Wait for S3 clips to stabilize
+    const stabilityChecker = createStabilityChecker({ s3Client, config });
+
+    let stabilityResult;
+    try {
+      stabilityResult = await stabilityChecker.waitForStability(bucket, inputPrefix);
+      console.info(`[MediaConvert] S3 clips stabilized: ${stabilityResult.clips.length} clips in ${stabilityResult.metrics.duration}ms`);
+    } catch (error) {
+      if (error instanceof S3StabilityError) {
+        console.error(`[MediaConvert] S3 stability check failed: ${error.message}`, error.details);
+      }
+      throw error;
+    }
+
+    const clips = stabilityResult.clips;
+
+    if (!clips || clips.length === 0) {
+      throw new Error('No video clips found to process after stability check');
+    }
+
+    // Get or discover MediaConvert endpoint
+    let endpoint = await _getMediaConvertEndpoint(config);
+
+    // Create MediaConvert client
+    const mediaConvertClient = new MediaConvertClient({ 
+      region: config.aws.region, 
+      endpoint 
+    });
+
+    // Build job parameters
+    const jobParams = _buildMediaConvertJobParams(clips, bucket, outputPrefix, config);
+
+    const clipKeys = clips.map(c => c.Key);
+    console.info(`[MediaConvert] Submitting job: ${clips.length} clips, first=${clipKeys[0]?.split('/').pop()}, last=${clipKeys[clipKeys.length - 1]?.split('/').pop()}`);
+
+    // Submit job
+    const createJobCommand = new CreateJobCommand(jobParams);
+    let jobResponse;
+    
+    try {
+      jobResponse = await mediaConvertClient.send(createJobCommand);
+    } catch (err) {
+      console.error(`[MediaConvert] Job submission failed for meeting=${meetingId}: ${err.message}`);
+      throw new Error(`MediaConvert createJob error: ${err.message}`);
+    }
+
+    const jobId = jobResponse.Job?.Id;
+    const outputKey = `${outputPrefix}index.m3u8`;
+
+    // Update meeting storage
+    await updateMeetingHost(meetingId, {
+      ...meetingData.host,
+      recording: {
+        ...recording,
+        mediaConvertJobId: jobId,
+        mediaConvertStatus: "SUBMITTED",
+        finalVideoKey: outputKey,
+        processStartedAt: new Date().toISOString(),
+        clipsCount: clips.length,
+        correlationId,
+      }
+    });
+
+    const duration = Date.now() - startTime;
+    console.info(`[MediaConvert] Job created successfully: jobId=${jobId}, duration=${duration}ms, clips=${clips.length}`);
+
+    return {
+      jobId,
+      outputKey,
+      clipsCount: clips.length,
+      clips: clipKeys,
+      correlationId,
+      metrics: stabilityResult.metrics,
+      rawJob: {
+        id: jobResponse.Job?.Id,
+        arn: jobResponse.Job?.Arn,
+        status: jobResponse.Job?.Status,
+      }
+    };
+
+  } catch (error) {
+    console.error(`[MediaConvert] Job creation failed for meeting=${meetingId}: ${error.message}`);
+    throw error;
+  }
+}
+
+export async function getMediaConvertJobStatus(jobId) {
+  const config = getConfig();
+
+  if (!jobId) {
+    throw new Error('jobId required');
   }
 
-  if (!clips || clips.length === 0) {
-    throw new Error('No video clips found to process');
+  try {
+    const endpoint = await _getMediaConvertEndpoint(config);
+    const mediaConvertClient = new MediaConvertClient({ 
+      region: config.aws.region, 
+      endpoint 
+    });
+    
+    const getJobCommand = new GetJobCommand({ Id: jobId });
+    const jobResponse = await mediaConvertClient.send(getJobCommand);
+    
+    console.info(`[MediaConvert] Job status: jobId=${jobId}, status=${jobResponse.Job?.Status}, progress=${jobResponse.Job?.JobPercentComplete}%`);
+
+    return jobResponse;
+  } catch (error) {
+    console.error(`[MediaConvert] Failed to get job status for jobId=${jobId}: ${error.message}`);
+    throw error;
   }
-  let endpoint = process.env.AWS_MEDIACONVERT_ENDPOINT;
+}
+
+/**
+ * Get or discover MediaConvert endpoint
+ * @private
+ */
+async function _getMediaConvertEndpoint(config) {
+  let endpoint = config.aws.mediaConvert.endpoint;
+  
   if (!endpoint) {
     try {
-      const probeClient = new MediaConvertClient({ region: process.env.AWS_REGION });
+      const probeClient = new MediaConvertClient({ region: config.aws.region });
       const desc = await probeClient.send(new DescribeEndpointsCommand({}));
-      const found = desc?.Endpoints?.[0]?.Url;
-      if (found) {
-        endpoint = found;
-        console.info('Discovered MediaConvert endpoint:', endpoint);
+      endpoint = desc?.Endpoints?.[0]?.Url;
+      
+      if (endpoint) {
+        console.info(`[MediaConvert] Discovered endpoint: ${endpoint}`);
       }
     } catch (epErr) {
-      console.debug('Could not discover MediaConvert endpoint via DescribeEndpoints:', epErr?.message || epErr);
+      console.debug(`[MediaConvert] Could not discover endpoint: ${epErr.message}`);
     }
   }
 
-  endpoint = endpoint || 'https://mediaconvert.us-east-1.amazonaws.com';
-  const mediaConvertClient = new MediaConvertClient({ region: process.env.AWS_REGION, endpoint });
+  return endpoint || `https://mediaconvert.${config.aws.region}.amazonaws.com`;
+}
 
-  const jobParams = {
-    Role: process.env.AWS_MEDIACONVERT_ROLE,
+/**
+ * Build MediaConvert job parameters
+ * @private
+ */
+function _buildMediaConvertJobParams(clips, bucket, outputPrefix, config) {
+  const { mediaConvert } = config;
+
+  return {
+    Role: config.aws.mediaConvert.role,
     Settings: {
       Inputs: clips.map((clip) => ({
         AudioSelectors: {
@@ -92,7 +216,7 @@ export async function createMediaConvertJobForMeeting(meetingId, invokingUserEma
             Type: "HLS_GROUP_SETTINGS",
             HlsGroupSettings: {
               Destination: `s3://${bucket}/${outputPrefix}`,
-              SegmentLength: 10,
+              SegmentLength: mediaConvert.hlsSegmentLength,
               MinSegmentLength: 0,
               ManifestDurationFormat: "INTEGER",
               SegmentControl: "SEGMENTED_FILES",
@@ -128,7 +252,7 @@ export async function createMediaConvertJobForMeeting(meetingId, invokingUserEma
                 CodecSettings: {
                   Codec: "H_264",
                   H264Settings: {
-                    MaxBitrate: 5000000,
+                    MaxBitrate: mediaConvert.maxBitrate,
                     RateControlMode: "QVBR",
                     SceneChangeDetect: "TRANSITION_DETECTION",
                     QualityTuningLevel: "SINGLE_PASS_HQ",
@@ -140,17 +264,17 @@ export async function createMediaConvertJobForMeeting(meetingId, invokingUserEma
                     Syntax: "DEFAULT"
                   }
                 },
-                Width: 1280,
-                Height: 720
+                Width: mediaConvert.videoWidth,
+                Height: mediaConvert.videoHeight
               },
               AudioDescriptions: [
                 {
                   CodecSettings: {
                     Codec: "AAC",
                     AacSettings: {
-                      Bitrate: 128000,
+                      Bitrate: mediaConvert.audioBitrate,
                       CodingMode: "CODING_MODE_2_0",
-                      SampleRate: 48000,
+                      SampleRate: mediaConvert.audioSampleRate,
                       CodecProfile: "LC",
                       RateControlMode: "CBR"
                     }
@@ -162,55 +286,6 @@ export async function createMediaConvertJobForMeeting(meetingId, invokingUserEma
         }
       ]
     },
-    AccelerationSettings: { Mode: "DISABLED" }
+    AccelerationSettings: { Mode: mediaConvert.accelerationMode }
   };
-
-  const clipKeys = clips.map(c => c.Key);
-  console.info(`Creating MediaConvert job for meeting=${meetingId} with ${clips.length} clips`, clipKeys.slice(0, 50));
-
-  const createJobCommand = new CreateJobCommand(jobParams);
-  let jobResponse;
-  try {
-    jobResponse = await mediaConvertClient.send(createJobCommand);
-  } catch (err) {
-    console.error(`MediaConvert create job failed for meeting=${meetingId}; clips=${clips.length}`, err);
-    const message = err?.message || JSON.stringify(err);
-    throw new Error(`MediaConvert createJob error: ${message}`);
-  }
-
-  const jobId = jobResponse.Job?.Id;
-  const outputKey = `${outputPrefix}index.m3u8`;
-
-  await updateMeetingHost(meetingId, {
-    ...meetingData.host,
-    recording: {
-      ...recording,
-      mediaConvertJobId: jobId,
-      mediaConvertStatus: "SUBMITTED",
-      finalVideoKey: outputKey,
-      processStartedAt: new Date().toISOString(),
-      clipsCount: clips.length
-    }
-  });
-
-  return {
-    jobId,
-    outputKey,
-    clipsCount: clips.length,
-    clips: clipKeys,
-    rawJob: {
-      id: jobResponse.Job?.Id,
-      arn: jobResponse.Job?.Arn,
-      status: jobResponse.Job?.Status
-    }
-  };
-}
-
-export async function getMediaConvertJobStatus(jobId) {
-  if (!jobId) throw new Error('jobId required');
-  const endpoint = process.env.AWS_MEDIACONVERT_ENDPOINT || 'https://mediaconvert.us-east-1.amazonaws.com';
-  const mediaConvertClient = new MediaConvertClient({ region: process.env.AWS_REGION, endpoint });
-  const getJobCommand = new GetJobCommand({ Id: jobId });
-  const jobResponse = await mediaConvertClient.send(getJobCommand);
-  return jobResponse;
 }

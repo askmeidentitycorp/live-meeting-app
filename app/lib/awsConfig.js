@@ -47,9 +47,9 @@ export const getMediaConvertClient = () => {
 
 // Export environment helper functions
 export const getEnv = {
-  region: () => process.env.CLOUD_REGION || process.env.AWS_REGION || 'us-east-1',
-  accountId: () => process.env.CLOUD_ACCOUNT_ID || process.env.AWS_ACCOUNT_ID,
-  s3Bucket: () => process.env.RECORDING_BUCKET || process.env.AWS_S3_RECORDING_BUCKET,
-  mediaConvertEndpoint: () => process.env.VIDEO_CONVERT_ENDPOINT || process.env.AWS_MEDIACONVERT_ENDPOINT,
-  mediaConvertRole: () => process.env.VIDEO_CONVERT_ROLE || process.env.AWS_MEDIACONVERT_ROLE
+  region: () => process.env.AWS_REGION || 'us-east-1',
+  accountId: () => process.env.AWS_ACCOUNT_ID,
+  s3Bucket: () => process.env.CHIME_RECORDING_BUCKET,
+  mediaConvertEndpoint: () => process.env.AWS_MEDIACONVERT_ENDPOINT,
+  mediaConvertRole: () => process.env.AWS_MEDIACONVERT_ROLE
 };

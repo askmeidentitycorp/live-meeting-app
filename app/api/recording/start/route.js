@@ -58,7 +58,7 @@ export async function POST(req) {
     }
 
     // Validate required environment variables
-    if (!process.env.AWS_S3_RECORDING_BUCKET) {
+    if (!process.env.CHIME_RECORDING_BUCKET) {
       return Response.json(
         { error: "S3 bucket not configured for recordings" }, 
         { status: 500 }
@@ -74,7 +74,7 @@ export async function POST(req) {
       SourceType: "ChimeSdkMeeting",
       SourceArn: `arn:aws:chime::${process.env.AWS_ACCOUNT_ID}:meeting/${meetingId}`,
       SinkType: "S3Bucket",
-      SinkArn: `arn:aws:s3:::${process.env.AWS_S3_RECORDING_BUCKET}/${s3Prefix}`,
+      SinkArn: `arn:aws:s3:::${process.env.CHIME_RECORDING_BUCKET}/${s3Prefix}`,
       ChimeSdkMeetingConfiguration: {
         ArtifactsConfiguration: {
           Audio: {
@@ -110,7 +110,7 @@ export async function POST(req) {
       pipelineArn: response.MediaCapturePipeline?.MediaPipelineArn,
       startedAt: new Date().toISOString(),
       startedBy: session.user.email,
-      s3Bucket: process.env.AWS_S3_RECORDING_BUCKET,
+      s3Bucket: process.env.CHIME_RECORDING_BUCKET,
       s3Prefix: s3Prefix,
       status: response.MediaCapturePipeline?.Status
     };
