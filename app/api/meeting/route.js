@@ -11,7 +11,6 @@ const client = new ChimeSDKMeetingsClient({ region: process.env.AWS_REGION });
 
 export async function POST(req) {
   try {
-    // Enforce authentication - only authenticated users can create meetings
     const session = await getServerSession(authOptions);
     
     if (!session || !session.user) {

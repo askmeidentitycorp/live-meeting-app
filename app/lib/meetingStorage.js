@@ -6,7 +6,7 @@ const collectionName = 'meetings';
 let cachedClient = null;
 let cachedDb = null;
 
-async function connectToDb() {
+export async function connectToDb() {
   if (cachedDb && cachedClient) {
     try {
       await cachedClient.db('admin').command({ ping: 1 });
