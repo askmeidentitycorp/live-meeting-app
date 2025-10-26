@@ -82,7 +82,7 @@ export async function POST(req) {
     const response = {
       Meeting: meeting?.Meeting,
       Attendee: attendee?.Attendee,
-      isHost: true, // Mark this attendee as host
+      isHost: true,
       hostInfo: {
         name: hostInfo.name,
         email: hostInfo.email,

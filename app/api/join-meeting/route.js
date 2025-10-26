@@ -18,6 +18,11 @@ export async function POST(req) {
     const getMeetingCommand = new GetMeetingCommand({ MeetingId: meetingId });
     const meetingData = await client.send(getMeetingCommand);
     
+
+    if (session?.user?.email) {
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    
     const storedMeeting = await getMeeting(meetingId);
     
     let uniqueUserId;
