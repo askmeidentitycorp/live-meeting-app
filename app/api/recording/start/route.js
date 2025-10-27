@@ -6,9 +6,25 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { getMeeting, updateMeetingHost } from '../../../lib/meetingStorage.js';
 
-const mediaPipelinesClient = new ChimeSDKMediaPipelinesClient({ 
-  region: process.env.CHIME_REGION 
-});
+// Create Chime Media Pipelines client with credentials
+const getMediaPipelinesClient = () => {
+  const config = {
+    region: process.env.CHIME_REGION || 'us-east-1'
+  };
+
+  // Add credentials if provided (for Amplify deployment)
+  const accessKeyId = process.env.CHIME_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.CHIME_SECRET_ACCESS_KEY;
+  
+  if (accessKeyId && secretAccessKey) {
+    config.credentials = {
+      accessKeyId,
+      secretAccessKey
+    };
+  }
+
+  return new ChimeSDKMediaPipelinesClient(config);
+};
 
 export async function POST(req) {
   try {
@@ -68,6 +84,9 @@ export async function POST(req) {
     // Create S3 path for recording
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const s3Prefix = `recordings/${meetingId}/${timestamp}`;
+
+    // Get client with credentials
+    const mediaPipelinesClient = getMediaPipelinesClient();
 
     // Create media capture pipeline
     const command = new CreateMediaCapturePipelineCommand({

@@ -7,9 +7,25 @@ import { authOptions } from "../../auth/[...nextauth]/route";
 import { getMeeting, updateMeetingHost } from '../../../lib/meetingStorage.js';
 import { createMediaConvertJobForMeeting } from '../../../lib/mediaconvert.js';
 
-const mediaPipelinesClient = new ChimeSDKMediaPipelinesClient({ 
-  region: process.env.CHIME_REGION 
-});
+// Create Chime Media Pipelines client with credentials
+const getMediaPipelinesClient = () => {
+  const config = {
+    region: process.env.CHIME_REGION || 'us-east-1'
+  };
+
+  // Add credentials if provided (for Amplify deployment)
+  const accessKeyId = process.env.CHIME_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.CHIME_SECRET_ACCESS_KEY;
+  
+  if (accessKeyId && secretAccessKey) {
+    config.credentials = {
+      accessKeyId,
+      secretAccessKey
+    };
+  }
+
+  return new ChimeSDKMediaPipelinesClient(config);
+};
 
 export async function POST(req) {
   try {
@@ -63,6 +79,9 @@ export async function POST(req) {
         { status: 400 }
       );
     }
+
+    // Get client with credentials
+    const mediaPipelinesClient = getMediaPipelinesClient();
 
     const command = new DeleteMediaCapturePipelineCommand({
       MediaPipelineId: pipelineId
