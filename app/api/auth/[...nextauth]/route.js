@@ -6,7 +6,7 @@ export const authOptions = {
     Auth0Provider({
       clientId: process.env.NEXT_PUBLIC_AUTH0_CLIENT_ID || "",
       clientSecret: process.env.AUTH0_CLIENT_SECRET || "",
-      issuer: process.env.NEXT_PUBLIC_AUTH0_DOMAIN ? `https://${process.env.NEXT_PUBLIC_AUTH0_DOMAIN}` : (process.env.AUTH0_ISSUER || ""),
+      issuer: `https://${process.env.NEXT_PUBLIC_AUTH0_DOMAIN}`,
     }),
   ],
   secret: process.env.AUTH0_SECRET,
@@ -36,7 +36,7 @@ export const authOptions = {
     signIn: "/auth/signin",
   },
   // Set base URL for redirects
-  baseUrl: process.env.NEXT_PUBLIC_APP_BASE_URL || "https://localhost:3000",
+  baseUrl: process.env.NEXT_PUBLIC_APP_BASE_URL,
 };
 
 const handler = NextAuth(authOptions);
