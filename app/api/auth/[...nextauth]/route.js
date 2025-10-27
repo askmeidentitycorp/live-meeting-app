@@ -36,7 +36,7 @@ export const authOptions = {
     signIn: "/auth/signin",
   },
   // Set base URL for redirects
-  baseUrl: process.env.NEXTAUTH_URL || process.env.APP_BASE_URL,
+  baseUrl: process.env.NEXT_PUBLIC_APP_BASE_URL || "https://localhost:3000",
 };
 
 const handler = NextAuth(authOptions);
