@@ -8,7 +8,7 @@
         "Service": "chime.amazonaws.com"
       },
       "Action": "s3:PutObject",
-      "Resource": "arn:aws:s3:::chime-recordings-live-meeting-app-20251017/*"
+      "Resource": "arn:aws:s3:::chime-recordings-live-meeting-app/*"
     }
   ]
 }
