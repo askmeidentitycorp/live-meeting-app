@@ -44,8 +44,8 @@ export async function POST(req) {
     const hostInfo = {
       name: session.user.name || session.user.email || "Host",
       email: session.user.email,
-      userId: session.user.email, // Use email as unique identifier
-      provider: session.provider || "auth0"
+      userId: session.user.email,
+      provider: session.provider
     };
     
     const region = process.env.CHIME_REGION || 'us-east-1';
