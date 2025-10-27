@@ -9,7 +9,7 @@ export const authOptions = {
       issuer: `https://${process.env.NEXT_PUBLIC_AUTH0_DOMAIN}`,
     }),
   ],
-  secret: process.env.AUTH0_SECRET,
+  secret: process.env.NEXTAUTH_SECRET,
   session: { strategy: "jwt" },
   callbacks: {
     async jwt({ token, account, profile }) {
@@ -35,8 +35,6 @@ export const authOptions = {
   pages: {
     signIn: "/auth/signin",
   },
-  // Set base URL for redirects
-  baseUrl: process.env.NEXT_PUBLIC_APP_BASE_URL,
 };
 
 const handler = NextAuth(authOptions);
