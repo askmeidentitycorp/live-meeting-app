@@ -14,7 +14,6 @@ export class S3StabilityError extends Error {
   }
 }
 
-// Helper to get AWS config with credentials
 const getAWSConfig = () => {
   const config = {
     region: process.env.CHIME_REGION || 'us-east-1'

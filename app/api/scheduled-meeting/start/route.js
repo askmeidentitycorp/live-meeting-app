@@ -29,13 +29,14 @@ export async function POST(req) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user?.email) {
-      
-    const chimeClient = getChimeClient();
       return NextResponse.json(
         { error: "Unauthorized - session required" },
         { status: 401 }
       );
     }
+
+    // Initialize Chime client
+    const chimeClient = getChimeClient();
 
     const { scheduledMeetingId } = await req.json();
 
