@@ -23,6 +23,7 @@ export default function HomeContent() {
   const [scheduledMeetingInfo, setScheduledMeetingInfo] = useState(null);
   const [loadingScheduledInfo, setLoadingScheduledInfo] = useState(false);
   const [startingMeeting, setStartingMeeting] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (session?.user && meetingIdParam) {
@@ -41,6 +42,7 @@ export default function HomeContent() {
 
   const loadScheduledMeetingInfo = async (scheduledId) => {
     setLoadingScheduledInfo(true);
+    setError(null);
     try {
       const res = await fetch(`/api/scheduled-meeting/${scheduledId}/info`);
       const json = await res.json();
@@ -51,10 +53,11 @@ export default function HomeContent() {
           router.push(`/?id=${json.meeting.chimeMeetingId}`);
         }
       } else {
-        alert(json.error || "Scheduled meeting not found");
+        setError(json.error || "Scheduled meeting not found");
       }
     } catch (error) {
       console.error("Error loading scheduled meeting info:", error);
+      setError("Failed to load meeting information. Please try again.");
     } finally {
       setLoadingScheduledInfo(false);
     }
@@ -68,20 +71,25 @@ export default function HomeContent() {
 
   const loadScheduledMeetings = async () => {
     setLoadingScheduled(true);
+    setError(null);
     try {
       const res = await fetch("/api/scheduled-meeting");
       const json = await res.json();
       if (res.ok && json.meetings) {
         setScheduledMeetings(json.meetings);
+      } else {
+        setError(json.error || "Failed to load scheduled meetings");
       }
     } catch (error) {
       console.error("Error loading scheduled meetings:", error);
+      setError("Failed to load scheduled meetings. Please try again.");
     } finally {
       setLoadingScheduled(false);
     }
   };
 
   const handleScheduleMeeting = async ({ title, description, scheduledDateTime, duration }) => {
+    setError(null);
     try {
       const res = await fetch("/api/scheduled-meeting", {
         method: "POST",
@@ -95,13 +103,14 @@ export default function HomeContent() {
       setShowScheduleModal(false);
       await loadScheduledMeetings();
     } catch (err) {
-      alert(err?.message || "Failed to schedule meeting");
+      setError(err?.message || "Failed to schedule meeting");
       throw err;
     }
   };
 
   const handleStartScheduledMeeting = async (meeting) => {
     setStartingMeeting(true);
+    setError(null);
     try {
       const res = await fetch("/api/scheduled-meeting/start", {
         method: "POST",
@@ -115,8 +124,7 @@ export default function HomeContent() {
       const meetingId = json.meetingId;
       router.push(`/meeting/${meetingId}?name=${encodeURIComponent(session?.user?.name || "Host")}`);
     } catch (err) {
-      alert(err?.message || "Failed to start meeting");
-    } finally {
+      setError(err?.message || "Failed to start meeting");
       setStartingMeeting(false);
     }
   };
@@ -126,6 +134,7 @@ export default function HomeContent() {
       return;
     }
     
+    setError(null);
     try {
       const res = await fetch(`/api/scheduled-meeting/${meetingId}`, {
         method: "DELETE"
@@ -136,7 +145,7 @@ export default function HomeContent() {
       
       await loadScheduledMeetings();
     } catch (err) {
-      alert(err?.message || "Failed to delete meeting");
+      setError(err?.message || "Failed to delete meeting");
     }
   };
 
@@ -167,6 +176,26 @@ export default function HomeContent() {
             <p className="text-base text-gray-600">Connect with anyone, anywhere, anytime</p>
           </header>
 
+          {/* Error Message */}
+          {error && (
+            <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 flex items-start gap-3">
+              <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <div className="flex-1">
+                <p className="font-medium">{error}</p>
+              </div>
+              <button 
+                onClick={() => setError(null)}
+                className="text-red-500 hover:text-red-700"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
             {/* Create Meeting Card */}
             <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl shadow-lg p-5 text-white hover:shadow-xl transition-all duration-200 hover:scale-[1.02]">
@@ -183,6 +212,7 @@ export default function HomeContent() {
                     return;
                   }
                   setCreating(true);
+                  setError(null);
                   try {
                     const res = await fetch("/api/meeting", {
                       method: "POST",
@@ -194,15 +224,23 @@ export default function HomeContent() {
                     const meetingId = json?.Meeting?.MeetingId;
                     window.location.href = `/meeting/${meetingId}?name=${encodeURIComponent(json?.hostInfo?.name || "Host")}`;
                   } catch (err) {
-                    alert(err?.message || "Failed to create meeting");
-                  } finally {
+                    setError(err?.message || "Failed to create meeting");
                     setCreating(false);
                   }
                 }}
                 disabled={creating}
               >
-                <Plus size={18} />
-                {creating ? "Creating..." : "New Meeting"}
+                {creating ? (
+                  <>
+                    <div className="w-[18px] h-[18px] border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                    <span>Creating...</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus size={18} />
+                    <span>New Meeting</span>
+                  </>
+                )}
               </button>
             </div>
 
@@ -294,18 +332,38 @@ export default function HomeContent() {
       )}
 
       {/* SCREEN 2: Join Meeting Form */}
-      {(showJoin || (!session?.user && meetingIdParam)) && (
+      {(showJoin || (!session?.user && meetingIdParam)) && !loadingScheduledInfo && (
         <div className="max-w-3xl w-full mx-auto bg-white rounded-2xl shadow-lg p-8">
           <JoinMeetingForm meetingIdParam={meetingIdParam} />
         </div>
       )}
 
       {/* SCREEN 3: Scheduled Meeting Info (when someone clicks a scheduled meeting link) */}
-      {scheduledIdParam && (
+      {scheduledIdParam && !meetingIdParam && (
         <div className="max-w-3xl w-full mx-auto bg-white rounded-2xl shadow-lg p-8">
           <header className="text-center mb-8">
             <h1 className="text-3xl sm:text-4xl font-bold text-gray-800">Scheduled Meeting</h1>
           </header>
+
+          {/* Error Message */}
+          {error && (
+            <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 flex items-start gap-3">
+              <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <div className="flex-1">
+                <p className="font-medium">{error}</p>
+              </div>
+              <button 
+                onClick={() => setError(null)}
+                className="text-red-500 hover:text-red-700"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          )}
 
           {loadingScheduledInfo ? (
             <div className="flex flex-col items-center justify-center gap-4 py-8">
@@ -431,9 +489,29 @@ export default function HomeContent() {
             <p className="mt-2 text-sm sm:text-base text-gray-600">Manage your upcoming meetings</p>
           </header>
 
+          {/* Error Message */}
+          {error && (
+            <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200 text-red-700 flex items-start gap-3">
+              <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <div className="flex-1">
+                <p className="font-medium">{error}</p>
+              </div>
+              <button 
+                onClick={() => setError(null)}
+                className="text-red-500 hover:text-red-700"
+              >
+                <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                </svg>
+              </button>
+            </div>
+          )}
+
           {loadingScheduled ? (
             <div className="flex items-center justify-center gap-2 text-gray-500 py-8">
-              <div className="w-5 h-5 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
+              <div className="w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
               <span>Loading scheduled meetings...</span>
             </div>
           ) : scheduledMeetings.length === 0 ? (

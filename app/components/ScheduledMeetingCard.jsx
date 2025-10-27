@@ -6,6 +6,7 @@ import { useState } from "react";
 export default function ScheduledMeetingCard({ meeting, onStart, onDelete }) {
   const [copied, setCopied] = useState(false);
   const [isStarting, setIsStarting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const scheduledDate = new Date(meeting.scheduledDateTime);
   const now = new Date();
@@ -95,13 +96,24 @@ export default function ScheduledMeetingCard({ meeting, onStart, onDelete }) {
     setIsStarting(true);
     try {
       await onStart(meeting);
-    } finally {
+    } catch (error) {
+      console.error("Error starting meeting:", error);
       setIsStarting(false);
+    }
+  };
+  
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await onDelete(meeting._id);
+    } catch (error) {
+      console.error("Error deleting meeting:", error);
+      setIsDeleting(false);
     }
   };
 
   return (
-    <div className={`bg-white rounded-lg shadow border ${isPast ? 'border-gray-200 opacity-75' : 'border-gray-300'} p-4 hover:shadow-md transition-shadow`}>
+    <div className={`bg-white rounded-lg shadow border ${isPast ? 'border-gray-200 opacity-75' : 'border-gray-300'} p-4 hover:shadow-md transition-shadow ${isDeleting ? 'opacity-50 pointer-events-none' : ''}`}>
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
           <h3 className="font-semibold text-gray-800 text-lg mb-1">
@@ -113,11 +125,16 @@ export default function ScheduledMeetingCard({ meeting, onStart, onDelete }) {
         </div>
         {!isPast && (
           <button
-            onClick={() => onDelete(meeting._id)}
-            className="text-gray-400 hover:text-red-500 transition-colors ml-2"
+            onClick={handleDelete}
+            disabled={isDeleting}
+            className="text-gray-400 hover:text-red-500 transition-colors ml-2 disabled:opacity-50 disabled:cursor-not-allowed"
             title="Delete meeting"
           >
-            <Trash2 size={18} />
+            {isDeleting ? (
+              <div className="w-[18px] h-[18px] border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <Trash2 size={18} />
+            )}
           </button>
         )}
       </div>
@@ -139,10 +156,19 @@ export default function ScheduledMeetingCard({ meeting, onStart, onDelete }) {
           <button
             onClick={handleStart}
             disabled={isStarting}
-            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
           >
-            <Video size={18} />
-            <span>{isStarting ? "Starting..." : "Start Meeting"}</span>
+            {isStarting ? (
+              <>
+                <div className="w-[18px] h-[18px] border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                <span>Starting...</span>
+              </>
+            ) : (
+              <>
+                <Video size={18} />
+                <span>Start Meeting</span>
+              </>
+            )}
           </button>
         )}
         {isTooEarly && (
@@ -155,14 +181,16 @@ export default function ScheduledMeetingCard({ meeting, onStart, onDelete }) {
             <span>Too Early</span>
           </button>
         )}
-        <button
-          onClick={copyMeetingLink}
-          className="flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-          title="Copy meeting link"
-        >
-          {copied ? <Check size={18} className="text-green-500" /> : <Copy size={18} />}
-          <span className="hidden sm:inline">{copied ? "Copied!" : "Copy Link"}</span>
-        </button>
+        {!isPast && (
+          <button
+            onClick={copyMeetingLink}
+            className="flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            title="Copy meeting link"
+          >
+            {copied ? <Check size={18} className="text-green-500" /> : <Copy size={18} />}
+            <span className="hidden sm:inline">{copied ? "Copied!" : "Copy Link"}</span>
+          </button>
+        )}
       </div>
     </div>
   );
