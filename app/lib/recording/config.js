@@ -1,50 +1,51 @@
 /**
  * Configuration management for recording and media processing
  * Centralizes all configurable values with validation and defaults
+ * Uses CHIME_ prefix for Amplify compatibility
  */
 
 export class RecordingConfig {
   constructor() {
     this.aws = {
-      region: this._getRequired('AWS_REGION'),
+      region: this._getRequired('CHIME_REGION'),
       mediaConvert: {
-        role: this._getRequired('AWS_MEDIACONVERT_ROLE'),
-        endpoint: process.env.AWS_MEDIACONVERT_ENDPOINT || null,
+        role: this._getRequired('MEDIACONVERT_ROLE'),
+        endpoint: process.env.MEDIACONVERT_ENDPOINT,
       }
     };
 
     this.s3Stability = {
       // Maximum time to wait for clips to stabilize (ms)
-      maxWaitMs: this._getInt('AWS_MC_LISTING_WAIT_MS', 60000),
+      maxWaitMs: this._getInt('MEDIACONVERT_LISTING_WAIT_MS', 60000),
       
       // Required age of newest clip before proceeding (ms)
-      stabilityThresholdMs: this._getInt('AWS_MC_STABILITY_THRESHOLD_MS', 10000),
+      stabilityThresholdMs: this._getInt('MEDIACONVERT_STABILITY_THRESHOLD_MS', 10000),
       
       // Interval between S3 polling attempts (ms)
-      pollIntervalMs: this._getInt('AWS_MC_POLL_INTERVAL_MS', 3000),
+      pollIntervalMs: this._getInt('MEDIACONVERT_POLL_INTERVAL_MS', 3000),
       
       // Number of consecutive stable iterations required
-      requiredStableIterations: this._getInt('AWS_MC_REQUIRED_STABLE_ITERATIONS', 2),
+      requiredStableIterations: this._getInt('MEDIACONVERT_REQUIRED_STABLE_ITERATIONS', 2),
       
       // Strategy: 'dual' (count + age), 'count-only', 'age-only'
-      strategy: process.env.AWS_MC_STABILITY_STRATEGY || 'dual',
+      strategy: process.env.MEDIACONVERT_STABILITY_STRATEGY || 'dual',
     };
 
     this.mediaConvert = {
       // Job settings
-      accelerationMode: process.env.AWS_MC_ACCELERATION_MODE || 'DISABLED',
+      accelerationMode: process.env.MEDIACONVERT_ACCELERATION_MODE || 'DISABLED',
       
       // Output settings
-      hlsSegmentLength: this._getInt('AWS_MC_HLS_SEGMENT_LENGTH', 10),
+      hlsSegmentLength: this._getInt('MEDIACONVERT_HLS_SEGMENT_LENGTH', 10),
       
       // Video quality
-      maxBitrate: this._getInt('AWS_MC_MAX_BITRATE', 5000000),
-      videoWidth: this._getInt('AWS_MC_VIDEO_WIDTH', 1280),
-      videoHeight: this._getInt('AWS_MC_VIDEO_HEIGHT', 720),
+      maxBitrate: this._getInt('MEDIACONVERT_MAX_BITRATE', 5000000) ,
+      videoWidth: this._getInt('MEDIACONVERT_VIDEO_WIDTH', 1280) ,
+      videoHeight: this._getInt('MEDIACONVERT_VIDEO_HEIGHT', 720),
       
       // Audio quality
-      audioBitrate: this._getInt('AWS_MC_AUDIO_BITRATE', 128000),
-      audioSampleRate: this._getInt('AWS_MC_AUDIO_SAMPLE_RATE', 48000),
+      audioBitrate: this._getInt('MEDIACONVERT_AUDIO_BITRATE', 128000),
+      audioSampleRate: this._getInt('MEDIACONVERT_AUDIO_SAMPLE_RATE', 48000),
     };
 
     this._validate();
@@ -72,11 +73,11 @@ export class RecordingConfig {
   _validate() {
     // Validate S3 stability settings
     if (this.s3Stability.maxWaitMs < 5000) {
-      console.warn('AWS_MC_LISTING_WAIT_MS is very low (<5s), may cause failures');
+      console.warn('MEDIACONVERT_LISTING_WAIT_MS is very low (<5s), may cause failures');
     }
     
     if (this.s3Stability.stabilityThresholdMs < 3000) {
-      console.warn('AWS_MC_STABILITY_THRESHOLD_MS is very low (<3s), may miss uploads');
+      console.warn('MEDIACONVERT_STABILITY_THRESHOLD_MS is very low (<3s), may miss uploads');
     }
 
     if (!['dual', 'count-only', 'age-only'].includes(this.s3Stability.strategy)) {

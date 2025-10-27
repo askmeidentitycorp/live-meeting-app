@@ -7,7 +7,7 @@ import { authOptions } from "../../auth/[...nextauth]/route";
 import { getMeeting, updateMeetingHost } from '../../../lib/meetingStorage.js';
 
 const mediaPipelinesClient = new ChimeSDKMediaPipelinesClient({ 
-  region: process.env.AWS_REGION 
+  region: process.env.CHIME_REGION 
 });
 
 export async function POST(req) {
@@ -72,7 +72,7 @@ export async function POST(req) {
     // Create media capture pipeline
     const command = new CreateMediaCapturePipelineCommand({
       SourceType: "ChimeSdkMeeting",
-      SourceArn: `arn:aws:chime::${process.env.AWS_ACCOUNT_ID}:meeting/${meetingId}`,
+      SourceArn: `arn:aws:chime::${process.env.CHIME_ACCOUNT_ID}:meeting/${meetingId}`,
       SinkType: "S3Bucket",
       SinkArn: `arn:aws:s3:::${process.env.CHIME_RECORDING_BUCKET}/${s3Prefix}`,
       ChimeSdkMeetingConfiguration: {

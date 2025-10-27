@@ -6,7 +6,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { getAllMeetings, removeMeeting, getMeeting } from '../../lib/meetingStorage.js';
 
-const client = new ChimeSDKMeetingsClient({ region: process.env.AWS_REGION });
+const client = new ChimeSDKMeetingsClient({ region: process.env.CHIME_REGION});
 
 export async function GET(req) {
   try {

@@ -8,7 +8,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { getMeeting, updateMeetingHost } from '../../../lib/meetingStorage.js';
 
-const s3Client = new S3Client({ region: process.env.AWS_REGION });
+const s3Client = new S3Client({ region: process.env.CHIME_REGION });
 import { createMediaConvertJobForMeeting } from '../../../lib/mediaconvert.js';
 
 export async function POST(req) {
@@ -85,10 +85,10 @@ export async function POST(req) {
       );
     }
 
-    const endpoint = process.env.AWS_MEDIACONVERT_ENDPOINT || 'https://mediaconvert.us-east-1.amazonaws.com';
+    const endpoint = process.env.MEDIACONVERT_ENDPOINT;
     
     const mediaConvertClient = new MediaConvertClient({ 
-      region: process.env.AWS_REGION,
+      region: process.env.CHIME_REGION,
       endpoint: endpoint
     });
 
@@ -200,10 +200,10 @@ export async function GET(req) {
     }
 
     const jobId = recording.mediaConvertJobId;
-    const endpoint = process.env.AWS_MEDIACONVERT_ENDPOINT || 'https://mediaconvert.us-east-1.amazonaws.com';
+    const endpoint = process.env.MEDIACONVERT_ENDPOINT;
 
     const mediaConvertClient = new MediaConvertClient({ 
-      region: process.env.AWS_REGION,
+      region: process.env.CHIME_REGION,
       endpoint: endpoint
     });
 

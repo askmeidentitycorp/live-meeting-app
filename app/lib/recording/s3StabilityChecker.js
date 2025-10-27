@@ -16,7 +16,7 @@ export class S3StabilityError extends Error {
 
 export class S3StabilityChecker {
   constructor(s3Client, config = null) {
-    this.s3Client = s3Client || new S3Client({ region: process.env.AWS_REGION });
+    this.s3Client = s3Client || new S3Client({ region: process.env.CHIME_REGION });
     this.config = config || getConfig();
   }
 

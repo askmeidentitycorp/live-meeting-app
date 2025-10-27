@@ -7,7 +7,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { addMeeting } from '../../lib/meetingStorage.js';
 
-const client = new ChimeSDKMeetingsClient({ region: process.env.AWS_REGION });
+const client = new ChimeSDKMeetingsClient({ region: process.env.CHIME_REGION });
 
 export async function POST(req) {
   try {
@@ -30,13 +30,13 @@ export async function POST(req) {
       provider: session.provider || "auth0"
     };
     
-    if (!process.env.AWS_REGION) {
-      throw new Error('AWS_REGION environment variable not set');
+    if (!process.env.CHIME_REGION) {
+      throw new Error('CHIME_REGION environment variable not set');
     }
     
     const command = new CreateMeetingCommand({
       ExternalMeetingId: `${meetingTitle}-${Date.now()}`,
-      MediaRegion: process.env.AWS_REGION,
+      MediaRegion: process.env.CHIME_REGION,
       MeetingFeatures: {
         Audio: {
           EchoReduction: "AVAILABLE"

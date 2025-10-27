@@ -4,7 +4,7 @@ import { ObjectId } from "mongodb";
 import { ChimeSDKMeetingsClient, GetMeetingCommand } from "@aws-sdk/client-chime-sdk-meetings";
 
 const chimeClient = new ChimeSDKMeetingsClient({ 
-  region: process.env.AWS_REGION || "us-east-1" 
+  region: process.env.CHIME_REGION 
 });
 
 export async function GET(req, { params }) {

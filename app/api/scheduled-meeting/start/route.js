@@ -6,7 +6,7 @@ import { ObjectId } from "mongodb";
 import { ChimeSDKMeetingsClient, CreateMeetingCommand, CreateAttendeeCommand, GetMeetingCommand } from "@aws-sdk/client-chime-sdk-meetings";
 
 const chimeClient = new ChimeSDKMeetingsClient({ 
-  region: process.env.AWS_REGION || "us-east-1" 
+  region: process.env.CHIME_REGION 
 });
 
 export async function POST(req) {
@@ -105,7 +105,7 @@ export async function POST(req) {
     // Create Chime meeting
     const createMeetingCommand = new CreateMeetingCommand({
       ClientRequestToken: `scheduled-${scheduledMeetingId}-${Date.now()}`,
-      MediaRegion: process.env.AWS_REGION || "us-east-1",
+      MediaRegion: process.env.CHIME_REGION,
       ExternalMeetingId: `scheduled-${scheduledMeetingId}`,
     });
 

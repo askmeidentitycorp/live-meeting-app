@@ -8,7 +8,7 @@ import { getMeeting, updateMeetingHost } from '../../../lib/meetingStorage.js';
 import { createMediaConvertJobForMeeting } from '../../../lib/mediaconvert.js';
 
 const mediaPipelinesClient = new ChimeSDKMediaPipelinesClient({ 
-  region: process.env.AWS_REGION 
+  region: process.env.CHIME_REGION 
 });
 
 export async function POST(req) {

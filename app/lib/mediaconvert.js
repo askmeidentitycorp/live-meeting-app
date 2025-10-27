@@ -9,7 +9,7 @@ import { getMeeting, updateMeetingHost } from './meetingStorage.js';
 import { getConfig } from './recording/config.js';
 import { createStabilityChecker, S3StabilityError } from './recording/s3StabilityChecker.js';
 
-const s3Client = new S3Client({ region: process.env.AWS_REGION });
+const s3Client = new S3Client({ region: process.env.CHIME_REGION });
 
 // Generate simple correlation ID
 function generateCorrelationId() {
