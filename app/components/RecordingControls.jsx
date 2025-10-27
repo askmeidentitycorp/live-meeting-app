@@ -136,13 +136,6 @@ export function RecordingControls({ meetingId, isHost }) {
 
   return (
     <div className="flex items-center gap-2">
-      {processingJobId && !isRecording && (
-        <div className="flex items-center gap-2 text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-lg">
-          <CheckCircle className="w-4 h-4" />
-          <span>Processing in background</span>
-        </div>
-      )}
-
       {isRecording && (
         <div className="flex items-center gap-2 bg-red-50 px-3 py-1.5 rounded-lg">
           <div className="flex items-center gap-1.5">
