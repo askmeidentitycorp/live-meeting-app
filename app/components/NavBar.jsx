@@ -12,9 +12,16 @@ export default function NavBar() {
       <div className="mx-auto px-6 py-3 flex items-center justify-between">
         <Link
           href="/"
-          className="text-xl cursor-pointer font-semibold tracking-tight text-gray-900 hover:text-gray-700 transition-colors"
+          className="flex items-center gap-1 cursor-pointer group"
         >
-          Live Meeting
+          <img 
+            src="/logo.png" 
+            alt="Connect Logo" 
+            className="h-8 w-8 object-contain transition-transform group-hover:scale-105"
+          />
+          <span className="text-xl font-semibold tracking-tight text-gray-900 group-hover:text-gray-700 transition-colors">
+            Connect
+          </span>
         </Link>
 
         <div className="flex items-center gap-3">
