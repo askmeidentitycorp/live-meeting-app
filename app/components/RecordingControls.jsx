@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Radio, Square, Loader2 } from "lucide-react";
+import { Radio, Square, Loader2, CheckCircle } from "lucide-react";
 import { useNotifications } from "../contexts/NotificationContext";
 
 export function RecordingControls({ meetingId, isHost }) {
@@ -9,8 +9,7 @@ export function RecordingControls({ meetingId, isHost }) {
   const [isLoading, setIsLoading] = useState(false);
   const [recordingStartTime, setRecordingStartTime] = useState(null);
   const [elapsedTime, setElapsedTime] = useState(0);
-  const [processingStatus, setProcessingStatus] = useState(null);
-  const [processingProgress, setProcessingProgress] = useState(0);
+  const [processingJobId, setProcessingJobId] = useState(null);
   
   const { addNotification } = useNotifications();
 
@@ -31,76 +30,6 @@ export function RecordingControls({ meetingId, isHost }) {
     return () => clearInterval(interval);
   }, [isRecording, recordingStartTime]);
 
-  // Poll for processing status
-  useEffect(() => {
-    if (!isHost || !processingStatus || processingStatus === "COMPLETE" || processingStatus === "ERROR") {
-      return;
-    }
-
-    let attempts = 0;
-    const MAX_ATTEMPTS = 24; // 2 minutes at 5s interval
-
-    const pollInterval = setInterval(async () => {
-      try {
-        const response = await fetch(`/api/recording/process?meetingId=${meetingId}`);
-        const contentType = response.headers.get("content-type");
-        if (!contentType || !contentType.includes("application/json")) {
-          console.error("Expected JSON response but got:", contentType);
-          attempts += 1;
-          if (attempts >= MAX_ATTEMPTS) {
-            addNotification("Processing is taking too long — please check server logs.", "warning");
-            setProcessingStatus("ERROR");
-            clearInterval(pollInterval);
-          }
-          return;
-        }
-
-        const data = await response.json();
-
-        if (response.ok) {
-          // If server responds with PENDING repeatedly include S3 diagnostics
-          if (data.status === "PENDING") {
-            attempts += 1;
-            // Optionally surface s3Clips to the UI as a debug notification (kept short)
-            if (attempts === 1 && data.s3Clips && data.s3Clips.length) {
-              const sample = data.s3Clips.slice(0, 3).map(s => s.split('/').pop()).join(', ');
-              addNotification(`Found ${data.s3Clips.length} clips: ${sample}`, "info");
-            }
-
-            if (attempts >= MAX_ATTEMPTS) {
-              addNotification("Processing hasn't started after a while — check server logs or AWS MediaConvert.", "error");
-              setProcessingStatus("ERROR");
-              clearInterval(pollInterval);
-            }
-            return;
-          }
-
-          // Normal progression
-          setProcessingStatus(data.status);
-          setProcessingProgress(data.progress || 0);
-
-          if (data.status === "COMPLETE") {
-            clearInterval(pollInterval);
-            addNotification("Recording saved to S3", "success");
-          } else if (data.status === "ERROR" || data.status === "CANCELED") {
-            addNotification(`Processing ${data.status.toLowerCase()}`, "error");
-            clearInterval(pollInterval);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to check processing status:", err);
-        attempts += 1;
-        if (attempts >= MAX_ATTEMPTS) {
-          addNotification("Processing poll failed repeatedly — check server logs.", "error");
-          setProcessingStatus("ERROR");
-          clearInterval(pollInterval);
-        }
-      }
-    }, 5000);
-
-    return () => clearInterval(pollInterval);
-  }, [isHost, meetingId, processingStatus]);
-
   const checkRecordingStatus = async () => {
     try {
       const res = await fetch(`/api/recording/status?meetingId=${meetingId}`);
@@ -116,8 +45,8 @@ export function RecordingControls({ meetingId, isHost }) {
         if (data.recording?.startedAt) {
           setRecordingStartTime(data.recording.startedAt);
         }
-        if (data.recording?.mediaConvertStatus) {
-          setProcessingStatus(data.recording.mediaConvertStatus);
+        if (data.recording?.mediaConvertJobId) {
+          setProcessingJobId(data.recording.mediaConvertJobId);
         }
       }
     } catch (err) {
@@ -145,7 +74,7 @@ export function RecordingControls({ meetingId, isHost }) {
       setIsRecording(true);
       setRecordingStartTime(data.recording.startedAt);
       setElapsedTime(0);
-      setProcessingStatus(null);
+      setProcessingJobId(null);
       addNotification("Recording started", "success");
     } catch (err) {
       addNotification(err.message, "error");
@@ -173,9 +102,16 @@ export function RecordingControls({ meetingId, isHost }) {
       setIsRecording(false);
       setRecordingStartTime(null);
       setElapsedTime(0);
-      setProcessingStatus("SUBMITTED");
-      setProcessingProgress(0);
-      addNotification("Recording stopped. Processing started...", "info");
+      
+      if (data.mediaConvert?.jobId) {
+        setProcessingJobId(data.mediaConvert.jobId);
+        addNotification(
+          `Recording stopped. Processing started (Job ID: ${data.mediaConvert.jobId.substring(0, 12)}...). Your video will be ready in a few minutes.`, 
+          "success"
+        );
+      } else {
+        addNotification("Recording stopped. Processing will begin shortly.", "info");
+      }
     } catch (err) {
       addNotification(err.message, "error");
     } finally {
@@ -200,17 +136,10 @@ export function RecordingControls({ meetingId, isHost }) {
 
   return (
     <div className="flex items-center gap-2">
-      {processingStatus && processingStatus !== "COMPLETE" && (
-        <div className="flex items-center gap-2 text-xs text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          <span>
-            {processingStatus === "PENDING" 
-              ? "Initializing..." 
-              : processingProgress > 0 
-                ? `${processingProgress}%` 
-                : "Processing..."
-            }
-          </span>
+      {processingJobId && !isRecording && (
+        <div className="flex items-center gap-2 text-xs text-green-600 bg-green-50 px-3 py-1.5 rounded-lg">
+          <CheckCircle className="w-4 h-4" />
+          <span>Processing in background</span>
         </div>
       )}
 
@@ -228,12 +157,12 @@ export function RecordingControls({ meetingId, isHost }) {
 
       <button
         onClick={isRecording ? handleStopRecording : handleStartRecording}
-        disabled={isLoading || (processingStatus && processingStatus !== "COMPLETE")}
+        disabled={isLoading}
         className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors cursor-pointer ${
           isRecording
             ? 'bg-red-500 hover:bg-red-600 text-white'
             : 'bg-gray-700 hover:bg-gray-800 text-white'
-        } ${(isLoading || (processingStatus && processingStatus !== "COMPLETE")) ? 'opacity-60 cursor-not-allowed' : ''}`}
+        } ${isLoading ? 'opacity-60 cursor-not-allowed' : ''}`}
         title={isRecording ? 'Stop Recording' : 'Start Recording'}
       >
         {isLoading ? (
