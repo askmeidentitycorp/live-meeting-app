@@ -7,11 +7,31 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { getMeeting } from '../../lib/meetingStorage.js';
 
-const client = new ChimeSDKMeetingsClient({ region: process.env.CHIME_REGION});
+// Create Chime client with credentials
+const getChimeClient = () => {
+  const config = {
+    region: process.env.CHIME_REGION || 'us-east-1'
+  };
+
+  // Add credentials if provided (for Amplify deployment)
+  const accessKeyId = process.env.CHIME_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.CHIME_SECRET_ACCESS_KEY;
+  
+  if (accessKeyId && secretAccessKey) {
+    config.credentials = {
+      accessKeyId,
+      secretAccessKey
+    };
+  }
+
+  return new ChimeSDKMeetingsClient(config);
+};
 
 export async function POST(req) {
   try {
     const { meetingId, attendeeName } = await req?.json();
+    
+    const client = getChimeClient();
     
     const session = await getServerSession(authOptions);
     
