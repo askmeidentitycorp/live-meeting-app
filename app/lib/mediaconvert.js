@@ -9,7 +9,26 @@ import { getMeeting, updateMeetingHost } from './meetingStorage.js';
 import { getConfig } from './recording/config.js';
 import { createStabilityChecker, S3StabilityError } from './recording/s3StabilityChecker.js';
 
-const s3Client = new S3Client({ region: process.env.CHIME_REGION });
+// Create AWS clients with credentials
+const getAWSConfig = () => {
+  const config = {
+    region: process.env.CHIME_REGION || 'us-east-1'
+  };
+
+  const accessKeyId = process.env.CHIME_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.CHIME_SECRET_ACCESS_KEY;
+  
+  if (accessKeyId && secretAccessKey) {
+    config.credentials = {
+      accessKeyId,
+      secretAccessKey
+    };
+  }
+
+  return config;
+};
+
+const s3Client = new S3Client(getAWSConfig());
 
 // Generate simple correlation ID
 function generateCorrelationId() {
@@ -78,9 +97,9 @@ export async function createMediaConvertJobForMeeting(meetingId, invokingUserEma
     // Get or discover MediaConvert endpoint
     let endpoint = await _getMediaConvertEndpoint(config);
 
-    // Create MediaConvert client
+    // Create MediaConvert client with credentials
     const mediaConvertClient = new MediaConvertClient({ 
-      region: config.aws.region, 
+      ...getAWSConfig(),
       endpoint 
     });
 
@@ -151,7 +170,7 @@ export async function getMediaConvertJobStatus(jobId) {
   try {
     const endpoint = await _getMediaConvertEndpoint(config);
     const mediaConvertClient = new MediaConvertClient({ 
-      region: config.aws.region, 
+      ...getAWSConfig(),
       endpoint 
     });
     
@@ -176,7 +195,7 @@ async function _getMediaConvertEndpoint(config) {
   
   if (!endpoint) {
     try {
-      const probeClient = new MediaConvertClient({ region: config.aws.region });
+      const probeClient = new MediaConvertClient(getAWSConfig());
       const desc = await probeClient.send(new DescribeEndpointsCommand({}));
       endpoint = desc?.Endpoints?.[0]?.Url;
       

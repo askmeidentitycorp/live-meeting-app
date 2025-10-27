@@ -14,9 +14,28 @@ export class S3StabilityError extends Error {
   }
 }
 
+// Helper to get AWS config with credentials
+const getAWSConfig = () => {
+  const config = {
+    region: process.env.CHIME_REGION || 'us-east-1'
+  };
+
+  const accessKeyId = process.env.CHIME_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.CHIME_SECRET_ACCESS_KEY;
+  
+  if (accessKeyId && secretAccessKey) {
+    config.credentials = {
+      accessKeyId,
+      secretAccessKey
+    };
+  }
+
+  return config;
+};
+
 export class S3StabilityChecker {
   constructor(s3Client, config = null) {
-    this.s3Client = s3Client || new S3Client({ region: process.env.CHIME_REGION });
+    this.s3Client = s3Client || new S3Client(getAWSConfig());
     this.config = config || getConfig();
   }
 

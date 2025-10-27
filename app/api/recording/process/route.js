@@ -7,9 +7,38 @@ import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { getMeeting, updateMeetingHost } from '../../../lib/meetingStorage.js';
-
-const s3Client = new S3Client({ region: process.env.CHIME_REGION });
 import { createMediaConvertJobForMeeting } from '../../../lib/mediaconvert.js';
+
+// Create AWS clients with credentials
+const getAWSConfig = () => {
+  const config = {
+    region: process.env.CHIME_REGION || 'us-east-1'
+  };
+
+  const accessKeyId = process.env.CHIME_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.CHIME_SECRET_ACCESS_KEY;
+  
+  if (accessKeyId && secretAccessKey) {
+    config.credentials = {
+      accessKeyId,
+      secretAccessKey
+    };
+  }
+
+  return config;
+};
+
+const getS3Client = () => new S3Client(getAWSConfig());
+
+const getMediaConvertClient = () => {
+  const config = getAWSConfig();
+  const endpoint = process.env.MEDIACONVERT_ENDPOINT;
+  
+  return new MediaConvertClient({
+    ...config,
+    endpoint: endpoint
+  });
+};
 
 export async function POST(req) {
   try {
@@ -59,6 +88,9 @@ export async function POST(req) {
     const inputPrefix = `${recording.s3Prefix}/composited-video/`;
     const outputPrefix = `${recording.s3Prefix}/final-video/`;
 
+    // Get S3 client with credentials
+    const s3Client = getS3Client();
+
     // List all MP4 clips
     const listCommand = new ListObjectsV2Command({
       Bucket: bucket,
@@ -87,10 +119,8 @@ export async function POST(req) {
 
     const endpoint = process.env.MEDIACONVERT_ENDPOINT;
     
-    const mediaConvertClient = new MediaConvertClient({ 
-      region: process.env.CHIME_REGION,
-      endpoint: endpoint
-    });
+    // Get MediaConvert client with credentials
+    const mediaConvertClient = getMediaConvertClient();
 
     const result = await createMediaConvertJobForMeeting(meetingId, session.user.email);
 
@@ -172,6 +202,7 @@ export async function GET(req) {
         console.error("Auto-create MediaConvert job failed:", err);
         // Fall back to telling the client processing is pending and include S3 listing for diagnostics
         try {
+          const s3Client = getS3Client();
           const bucket = recording.s3Bucket;
           const inputPrefix = `${recording.s3Prefix}/composited-video/`;
           const listCmd = new ListObjectsV2Command({ Bucket: bucket, Prefix: inputPrefix });
@@ -202,10 +233,8 @@ export async function GET(req) {
     const jobId = recording.mediaConvertJobId;
     const endpoint = process.env.MEDIACONVERT_ENDPOINT;
 
-    const mediaConvertClient = new MediaConvertClient({ 
-      region: process.env.CHIME_REGION,
-      endpoint: endpoint
-    });
+    // Get MediaConvert client with credentials
+    const mediaConvertClient = getMediaConvertClient();
 
     const getJobCommand = new GetJobCommand({ Id: jobId });
     const jobResponse = await mediaConvertClient.send(getJobCommand);

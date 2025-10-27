@@ -7,13 +7,11 @@ import { authOptions } from "../../auth/[...nextauth]/route";
 import { getMeeting, updateMeetingHost } from '../../../lib/meetingStorage.js';
 import { createMediaConvertJobForMeeting } from '../../../lib/mediaconvert.js';
 
-// Create Chime Media Pipelines client with credentials
 const getMediaPipelinesClient = () => {
   const config = {
     region: process.env.CHIME_REGION || 'us-east-1'
   };
 
-  // Add credentials if provided (for Amplify deployment)
   const accessKeyId = process.env.CHIME_ACCESS_KEY_ID;
   const secretAccessKey = process.env.CHIME_SECRET_ACCESS_KEY;
   
