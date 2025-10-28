@@ -7,7 +7,9 @@ import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { getMeeting, updateMeetingHost } from '../../../lib/meetingStorage.js';
-import { createMediaConvertJobForMeeting } from '../../../lib/mediaconvert.js';
+import { createBatchedMediaConvertJobs } from '../../../lib/mediaconvert-batch.js';
+import { createStabilityChecker, S3StabilityError } from '../../../lib/recording/s3StabilityChecker.js';
+import { getConfig } from '../../../lib/recording/config.js';
 
 // Create AWS clients with credentials
 const getAWSConfig = () => {
@@ -122,7 +124,7 @@ export async function POST(req) {
     // Get MediaConvert client with credentials
     const mediaConvertClient = getMediaConvertClient();
 
-    const result = await createMediaConvertJobForMeeting(meetingId, session.user.email);
+    const result = await createBatchedMediaConvertJobs(meetingId, session.user.email);
 
     return Response.json({
       success: true,
@@ -130,9 +132,12 @@ export async function POST(req) {
       status: "SUBMITTED",
       clipsCount: result.clipsCount,
       outputPath: result.outputKey,
+      processingMode: result.processingMode,
+      batchCount: result.batchCount,
       clips: result.clips || [],
-      job: result.rawJob || null,
-      message: "MediaConvert job submitted. Processing will complete in a few minutes."
+      message: result.processingMode === 'BATCHED' 
+        ? `Processing ${result.clipsCount} clips in ${result.batchCount} batches. This may take several minutes.`
+        : "MediaConvert job submitted. Processing will complete in a few minutes."
     });
 
   } catch (error) {
@@ -184,49 +189,84 @@ export async function GET(req) {
     }
 
     if (!recording.mediaConvertJobId) {
-      // No job has been created yet. Attempt to create it automatically
-      // (helps when the stop route failed to start MediaConvert).
+      // No job has been created yet. Check if clips are ready and create job
       try {
-        const result = await createMediaConvertJobForMeeting(meetingId, session.user.email);
+        const s3Client = getS3Client();
+        const config = getConfig();
+        const bucket = recording.s3Bucket;
+        const basePrefix = recording.s3Prefix.replace(/\/+$/g, '');
+        const inputPrefix = basePrefix.endsWith('/composited-video')
+          ? `${basePrefix}/`
+          : `${basePrefix}/composited-video/`;
+        
+        console.info(`[ProcessAPI] Checking clips stability for meeting ${meetingId}, prefix: ${inputPrefix}`);
+        
+        // Use stability checker to ensure all clips are ready
+        const stabilityChecker = createStabilityChecker({ s3Client, config });
+        
+        let stabilityResult;
+        try {
+          stabilityResult = await stabilityChecker.waitForStability(bucket, inputPrefix);
+          console.info(`[ProcessAPI] Clips stabilized: ${stabilityResult.clips.length} clips in ${stabilityResult.metrics.duration}ms`);
+        } catch (error) {
+          if (error instanceof S3StabilityError) {
+            // Clips not stable yet, return waiting status
+            console.info(`[ProcessAPI] Clips not stable yet: ${error.message}`, error.details);
+            return Response.json({
+              success: true,
+              status: "WAITING_FOR_CLIPS",
+              progress: 0,
+              message: "Waiting for video clips to be saved to S3...",
+              clipsFound: error.details.clipCount || 0,
+              details: {
+                elapsed: error.details.elapsed,
+                iterations: error.details.iterations
+              }
+            });
+          }
+          throw error;
+        }
+        
+        const clips = stabilityResult.clips;
+        
+        if (clips.length === 0) {
+          // No clips found yet
+          return Response.json({
+            success: true,
+            status: "WAITING_FOR_CLIPS",
+            progress: 0,
+            message: "Waiting for video clips to be saved to S3...",
+            clipsFound: 0
+          });
+        }
+        
+        // Clips are stable and ready, start processing
+        console.info(`[ProcessAPI] Starting processing for meeting ${meetingId}: ${clips.length} clips found and stable`);
+        const result = await createBatchedMediaConvertJobs(meetingId, session.user.email);
+        
         return Response.json({
           success: true,
           jobId: result.jobId,
           status: "SUBMITTED",
           progress: 0,
           outputPath: result.outputKey,
+          processingMode: result.processingMode,
+          batchCount: result.batchCount,
+          clipsCount: result.clipsCount,
           clips: result.clips || [],
-          job: result.rawJob || null,
-          message: "MediaConvert job submitted. Processing will complete in a few minutes."
+          stabilityMetrics: stabilityResult.metrics,
+          message: result.processingMode === 'BATCHED'
+            ? `Processing ${result.clipsCount} clips in ${result.batchCount} batches.`
+            : "MediaConvert job submitted. Processing will complete in a few minutes."
         });
       } catch (err) {
-        console.error("Auto-create MediaConvert job failed:", err);
-        // Fall back to telling the client processing is pending and include S3 listing for diagnostics
-        try {
-          const s3Client = getS3Client();
-          const bucket = recording.s3Bucket;
-          const inputPrefix = `${recording.s3Prefix}/composited-video/`;
-          const listCmd = new ListObjectsV2Command({ Bucket: bucket, Prefix: inputPrefix });
-          const listResp = await s3Client.send(listCmd);
-          const s3Keys = (listResp.Contents || []).map(o => o.Key).slice(0, 200);
-
-          return Response.json({
-            success: true,
-            status: "PENDING",
-            progress: 0,
-            message: "Recording stopped. Processing will begin shortly.",
-            s3Clips: s3Keys,
-            s3Bucket: bucket,
-            s3Prefix: inputPrefix
-          });
-        } catch (s3err) {
-          console.error('Failed to list S3 objects for diagnostics:', s3err);
-          return Response.json({
-            success: true,
-            status: "PENDING",
-            progress: 0,
-            message: "Recording stopped. Processing will begin shortly."
-          });
-        }
+        console.error("[ProcessAPI] Failed to start processing:", err);
+        return Response.json({
+          success: false,
+          status: "ERROR",
+          error: err.message,
+          message: "Failed to start processing. Please try again."
+        }, { status: 500 });
       }
     }
 

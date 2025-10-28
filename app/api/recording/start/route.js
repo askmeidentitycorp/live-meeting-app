@@ -122,7 +122,6 @@ export async function POST(req) {
 
     const response = await mediaPipelinesClient.send(command);
 
-    // Store recording information in meeting data
     const recordingInfo = {
       isRecording: true,
       pipelineId: response.MediaCapturePipeline?.MediaPipelineId,
@@ -134,7 +133,6 @@ export async function POST(req) {
       status: response.MediaCapturePipeline?.Status
     };
 
-    // Update meeting data with recording info
     updateMeetingHost(meetingId, {
       ...meetingData.host,
       recording: recordingInfo

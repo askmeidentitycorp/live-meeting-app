@@ -5,7 +5,6 @@ import {
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { getMeeting, updateMeetingHost } from '../../../lib/meetingStorage.js';
-import { createMediaConvertJobForMeeting } from '../../../lib/mediaconvert.js';
 
 const getMediaPipelinesClient = () => {
   const config = {
@@ -100,14 +99,12 @@ export async function POST(req) {
       recording: recordingInfo
     });
 
-    let mediaConvertResult = null;
-    try {
-      mediaConvertResult = await createMediaConvertJobForMeeting(meetingId, session.user.email);
-      console.info('MediaConvert job submitted:', mediaConvertResult.jobId);
-    } catch (err) {
-      console.error('Failed to create MediaConvert job:', err);
-      mediaConvertResult = { error: err?.message || String(err) };
-    }
+    console.info('Recording stopped successfully:', {
+      meetingId,
+      pipelineId,
+      s3Bucket: recordingInfo.s3Bucket,
+      s3Prefix: recordingInfo.s3Prefix
+    });
 
     return Response.json({
       success: true,
@@ -119,8 +116,7 @@ export async function POST(req) {
         s3Prefix: recordingInfo.s3Prefix,
         status: recordingInfo.status
       },
-      mediaConvert: mediaConvertResult && mediaConvertResult.jobId ? { jobId: mediaConvertResult.jobId, outputKey: mediaConvertResult.outputKey } : mediaConvertResult,
-      message: mediaConvertResult && mediaConvertResult.jobId ? "Recording stopped. MediaConvert job submitted." : `Recording stopped. MediaConvert job not created: ${mediaConvertResult?.error || 'unknown error'}`
+      message: "Recording stopped successfully. Processing will begin shortly."
     });
 
   } catch (error) {
