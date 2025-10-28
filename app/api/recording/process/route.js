@@ -189,8 +189,30 @@ export async function GET(req) {
     }
 
     if (!recording.mediaConvertJobId) {
+      // Check if processing is already in progress (lock to prevent duplicate jobs)
+      if (recording.processingStatus === "INITIALIZING" || recording.processingStatus === "PROCESSING") {
+        console.info(`[ProcessAPI] Processing already in progress for meeting ${meetingId}, status: ${recording.processingStatus}`);
+        return Response.json({
+          success: true,
+          status: "INITIALIZING",
+          progress: 0,
+          message: "Processing is being initialized...",
+          clipsFound: recording.clipsCount || 0
+        });
+      }
+
       // No job has been created yet. Check if clips are ready and create job
       try {
+        // Set lock to prevent duplicate processing
+        await updateMeetingHost(meetingId, {
+          ...meetingData.host,
+          recording: {
+            ...recording,
+            processingStatus: "INITIALIZING",
+            processingStartedAt: new Date().toISOString()
+          }
+        });
+
         const s3Client = getS3Client();
         const config = getConfig();
         const bucket = recording.s3Bucket;
@@ -210,7 +232,16 @@ export async function GET(req) {
           console.info(`[ProcessAPI] Clips stabilized: ${stabilityResult.clips.length} clips in ${stabilityResult.metrics.duration}ms`);
         } catch (error) {
           if (error instanceof S3StabilityError) {
-            // Clips not stable yet, return waiting status
+            // Clips not stable yet, clear lock and return waiting status
+            await updateMeetingHost(meetingId, {
+              ...meetingData.host,
+              recording: {
+                ...recording,
+                processingStatus: null,
+                processingStartedAt: null
+              }
+            });
+            
             console.info(`[ProcessAPI] Clips not stable yet: ${error.message}`, error.details);
             return Response.json({
               success: true,
@@ -224,13 +255,32 @@ export async function GET(req) {
               }
             });
           }
+          
+          // Clear lock on unexpected error
+          await updateMeetingHost(meetingId, {
+            ...meetingData.host,
+            recording: {
+              ...recording,
+              processingStatus: null,
+              processingStartedAt: null
+            }
+          });
           throw error;
         }
         
         const clips = stabilityResult.clips;
         
         if (clips.length === 0) {
-          // No clips found yet
+          // Clear lock - no clips found yet
+          await updateMeetingHost(meetingId, {
+            ...meetingData.host,
+            recording: {
+              ...recording,
+              processingStatus: null,
+              processingStartedAt: null
+            }
+          });
+          
           return Response.json({
             success: true,
             status: "WAITING_FOR_CLIPS",
@@ -261,6 +311,21 @@ export async function GET(req) {
         });
       } catch (err) {
         console.error("[ProcessAPI] Failed to start processing:", err);
+        
+        // Clear lock on error
+        try {
+          await updateMeetingHost(meetingId, {
+            ...meetingData.host,
+            recording: {
+              ...recording,
+              processingStatus: "ERROR",
+              processingError: err.message
+            }
+          });
+        } catch (updateErr) {
+          console.error("[ProcessAPI] Failed to update error status:", updateErr);
+        }
+        
         return Response.json({
           success: false,
           status: "ERROR",
