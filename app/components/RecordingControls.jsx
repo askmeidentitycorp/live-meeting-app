@@ -152,10 +152,12 @@ export function RecordingControls({ meetingId, isHost }) {
           return; // Stop polling
         }
         
+        // If processing is being initialized, keep showing waiting status but don't retry immediately
         if (data.status === "INITIALIZING") {
           console.info("Processing is being initialized...");
           if (attempts < maxAttempts) {
-            setTimeout(checkClips, 3000);
+            setTimeout(checkClips, 3000); // Check every 3 seconds when initializing
+          } else {
             setIsWaitingForClips(false);
             setClipsFound(0);
             addNotification("Processing is being initialized. Please wait...", "info");
@@ -163,9 +165,10 @@ export function RecordingControls({ meetingId, isHost }) {
           return;
         }
         
+        // If clips not ready yet (WAITING_FOR_CLIPS status)
         if (data.status === "WAITING_FOR_CLIPS") {
           if (attempts < maxAttempts) {
-            setTimeout(checkClips, 2000);
+            setTimeout(checkClips, 2000); // Check every 2 seconds
           } else {
             setIsWaitingForClips(false);
             setClipsFound(0);
@@ -174,6 +177,7 @@ export function RecordingControls({ meetingId, isHost }) {
           return;
         }
         
+        // If error occurred, stop polling
         if (data.status === "ERROR") {
           setIsWaitingForClips(false);
           setClipsFound(0);
@@ -181,6 +185,7 @@ export function RecordingControls({ meetingId, isHost }) {
           return;
         }
         
+        // For any other status, retry if not exceeded max attempts
         if (attempts < maxAttempts) {
           setTimeout(checkClips, 2000);
         } else {
@@ -201,6 +206,7 @@ export function RecordingControls({ meetingId, isHost }) {
       }
     };
     
+    // Start checking after 5 seconds (give Chime time to write initial clips)
     setTimeout(checkClips, 5000);
   };
 
