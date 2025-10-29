@@ -22,6 +22,7 @@ export function MeetingRoom({ meetingData }) {
   const { Meeting, Attendee } = meetingData || {};
   const [showPiP, setShowPiP] = useState(false);
   const [pipWindow, setPipWindow] = useState(null);
+  const [pipSupported, setPipSupported] = useState(false);
 
   const meetingSessionRef = useRef(null);
   const localVideoRef = useRef(null);
@@ -129,18 +130,15 @@ export function MeetingRoom({ meetingData }) {
                 attendeeId: tileState.boundAttendeeId
               }));
 
-              // Bind video element
               setTimeout(() => {
                 if (contentShareVideoRef?.current && meetingSessionRef?.current) {
                   try {
                     meetingSessionRef.current.audioVideo.bindVideoElement(tileState.tileId, contentShareVideoRef.current);
                   } catch (error) {
-                    // Silent error handling
                   }
                 }
               }, 100);
             } else {
-              // Handle remote participant video
               handleRemoteVideoTile(tileState);
             }
           },
@@ -338,6 +336,19 @@ export function MeetingRoom({ meetingData }) {
     return () => {
       stopPreviewStream();
     };
+  }, []);
+
+  // Detect Document Picture-in-Picture support (hide PiP button if unsupported)
+  useEffect(() => {
+    try {
+      const supported =
+        typeof window !== 'undefined' &&
+        'documentPictureInPicture' in window &&
+        typeof window.documentPictureInPicture?.requestWindow === 'function';
+      setPipSupported(!!supported);
+    } catch {
+      setPipSupported(false);
+    }
   }, []);
 
 
@@ -1022,7 +1033,7 @@ export function MeetingRoom({ meetingData }) {
               onToggleVideo={toggleVideo}
               onToggleScreenShare={toggleScreenShare}
               onLeaveMeeting={leaveMeeting}
-              onOpenPiP={openPiP}
+              onOpenPiP={pipSupported ? openPiP : undefined}
             />
           </div>
 
