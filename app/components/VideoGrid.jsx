@@ -1,9 +1,8 @@
 "use client";
 
-import { useState } from "react";
-import { VideoOff, MicOff, Monitor, ChevronLeft, ChevronRight } from "lucide-react";
+import { useState, useRef } from "react";
+import { VideoOff, MicOff, Monitor, ChevronUp, ChevronDown, Maximize, Minimize } from "lucide-react";
 
-// Reusable Participant Card Component
 function ParticipantCard({ participant, size = "default" }) {
   const isSmall = size === "small";
   
@@ -67,79 +66,6 @@ function ParticipantCard({ participant, size = "default" }) {
   );
 }
 
-// Reusable Pagination Controls Component
-function PaginationControls({ currentPage, totalPages, onNext, onPrev, totalCount, compact = false }) {
-  if (totalPages <= 1) return null;
-
-  if (compact) {
-    return (
-      <div className="flex items-center justify-between px-1">
-        <button
-          onClick={onPrev}
-          disabled={currentPage === 0}
-          className={`p-0.5 rounded transition-colors ${
-            currentPage === 0
-              ? 'text-gray-400 cursor-not-allowed'
-              : 'text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <ChevronLeft className="w-4 h-4" />
-        </button>
-        
-        <div className="text-xs text-gray-600">
-          {currentPage + 1}/{totalPages}
-        </div>
-        
-        <button
-          onClick={onNext}
-          disabled={currentPage >= totalPages - 1}
-          className={`p-0.5 rounded transition-colors ${
-            currentPage >= totalPages - 1
-              ? 'text-gray-400 cursor-not-allowed'
-              : 'text-gray-700 hover:bg-gray-200'
-          }`}
-        >
-          <ChevronRight className="w-4 h-4" />
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center justify-between mb-2 px-2">
-      <button
-        onClick={onPrev}
-        disabled={currentPage === 0}
-        className={`p-1 rounded-lg transition-colors ${
-          currentPage === 0
-            ? 'text-gray-400 cursor-not-allowed'
-            : 'text-gray-700 hover:bg-gray-200'
-        }`}
-        title="Previous Page"
-      >
-        <ChevronLeft className="w-5 h-5" />
-      </button>
-      
-      <div className="text-sm text-gray-600 font-medium">
-        Page {currentPage + 1} of {totalPages} ({totalCount} participants)
-      </div>
-      
-      <button
-        onClick={onNext}
-        disabled={currentPage >= totalPages - 1}
-        className={`p-1 rounded-lg transition-colors ${
-          currentPage >= totalPages - 1
-            ? 'text-gray-400 cursor-not-allowed'
-            : 'text-gray-700 hover:bg-gray-200'
-        }`}
-        title="Next Page"
-      >
-        <ChevronRight className="w-5 h-5" />
-      </button>
-    </div>
-  );
-}
-
 function getGridLayout(count) {
   const cols = Math.ceil(Math.sqrt(count));
   const rows = Math.ceil(count / cols);
@@ -162,11 +88,11 @@ export function VideoGrid({
   localUserName
 }) {
   const [currentPage, setCurrentPage] = useState(0);
-  const [sidebarPage, setSidebarPage] = useState(0);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const sidebarScrollRef = useRef(null);
+  const screenShareRef = useRef(null);
   const PARTICIPANTS_PER_PAGE = 9;
-  const SIDEBAR_PARTICIPANTS_PER_PAGE = 4;
 
-  // Combine local and remote participants for pagination
   const allParticipants = [
     {
       isLocal: true,
@@ -185,26 +111,53 @@ export function VideoGrid({
     (currentPage + 1) * PARTICIPANTS_PER_PAGE
   );
 
-  const sidebarTotalPages = Math.ceil(allParticipants.length / SIDEBAR_PARTICIPANTS_PER_PAGE);
-  const sidebarParticipants = allParticipants.slice(
-    sidebarPage * SIDEBAR_PARTICIPANTS_PER_PAGE,
-    (sidebarPage + 1) * SIDEBAR_PARTICIPANTS_PER_PAGE
-  );
-
-  // Reset pages if they become invalid
   if (currentPage >= totalPages && totalPages > 0) {
     setCurrentPage(0);
   }
-  if (sidebarPage >= sidebarTotalPages && sidebarTotalPages > 0) {
-    setSidebarPage(0);
-  }
 
-  // Screen Share Layout
+  const scrollSidebar = (direction) => {
+    if (sidebarScrollRef.current) {
+      const scrollAmount = 150; 
+      const currentScroll = sidebarScrollRef.current.scrollTop;
+      sidebarScrollRef.current.scrollTo({
+        top: direction === 'up' ? currentScroll - scrollAmount : currentScroll + scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  const toggleFullscreen = async () => {
+    if (!screenShareRef.current) return;
+
+    try {
+      if (!isFullscreen) {
+        if (screenShareRef.current.requestFullscreen) {
+          await screenShareRef.current.requestFullscreen();
+        } else if (screenShareRef.current.webkitRequestFullscreen) {
+          await screenShareRef.current.webkitRequestFullscreen();
+        } else if (screenShareRef.current.msRequestFullscreen) {
+          await screenShareRef.current.msRequestFullscreen();
+        }
+        setIsFullscreen(true);
+      } else {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+          await document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+          await document.msExitFullscreen();
+        }
+        setIsFullscreen(false);
+      }
+    } catch (error) {
+      console.error('Error toggling fullscreen:', error);
+    }
+  };
+
   if (contentShareTileId && (isLocalScreenSharing || isRemoteScreenSharing)) {
     return (
       <div className="h-full flex gap-3">
-        {/* Main Content Share Area */}
-        <div className="flex-1 bg-black rounded-lg overflow-hidden border border-gray-300 relative">
+        <div ref={screenShareRef} className="flex-1 bg-black rounded-lg overflow-hidden border border-gray-300 relative">
           <video
             ref={contentShareVideoRef}
             autoPlay
@@ -216,43 +169,70 @@ export function VideoGrid({
             <Monitor className="w-3 h-3" />
             Screen Share
           </div>
+          <button
+            onClick={toggleFullscreen}
+            className="absolute top-2 right-2 bg-gray-800 bg-opacity-70 hover:bg-opacity-90 text-white p-2 rounded-lg transition-all"
+            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+          >
+            {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+          </button>
         </div>
 
-        {/* Participant Videos Sidebar */}
         <div className="w-60 flex flex-col gap-2">
-          <PaginationControls
-            currentPage={sidebarPage}
-            totalPages={sidebarTotalPages}
-            onNext={() => setSidebarPage(prev => Math.min(prev + 1, sidebarTotalPages - 1))}
-            onPrev={() => setSidebarPage(prev => Math.max(prev - 1, 0))}
-            totalCount={allParticipants.length}
-            compact
-          />
-          
-          {sidebarParticipants.map((participant) => (
-            <ParticipantCard 
-              key={participant?.attendeeId} 
-              participant={participant} 
-              size="small" 
-            />
-          ))}
+          <button
+            onClick={() => scrollSidebar('up')}
+            className="p-2 rounded-lg transition-colors bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center"
+            title="Scroll Up"
+          >
+            <ChevronUp className="w-5 h-5" />
+          </button>
+
+          <div 
+            ref={sidebarScrollRef}
+            className="flex-1 flex flex-col gap-2 overflow-y-auto"
+            style={{
+              scrollbarWidth: 'none',
+              msOverflowStyle: 'none',
+            }}
+          >
+            <style jsx>{`
+              div::-webkit-scrollbar {
+                display: none;
+              }
+            `}</style>
+            
+            {allParticipants.map((participant) => (
+              <div
+                key={participant?.attendeeId}
+                style={{
+                  height: '135px',
+                  minHeight: '135px',
+                  maxHeight: '135px',
+                  flexShrink: 0
+                }}
+              >
+                <ParticipantCard 
+                  participant={participant} 
+                  size="small" 
+                />
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={() => scrollSidebar('down')}
+            className="p-2 rounded-lg transition-colors bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center"
+            title="Scroll Down"
+          >
+            <ChevronDown className="w-5 h-5" />
+          </button>
         </div>
       </div>
     );
   }
 
-  // Normal Video Grid Layout
   return (
     <div className="h-full flex flex-col">
-      <PaginationControls
-        currentPage={currentPage}
-        totalPages={totalPages}
-        onNext={() => setCurrentPage(prev => Math.min(prev + 1, totalPages - 1))}
-        onPrev={() => setCurrentPage(prev => Math.max(prev - 1, 0))}
-        totalCount={allParticipants.length}
-      />
-
-      {/* Video Grid */}
       <div className="flex-1 grid gap-2" style={getGridLayout(currentParticipants.length)}>
         {currentParticipants.map((participant) => (
           <ParticipantCard 
@@ -262,7 +242,6 @@ export function VideoGrid({
         ))}
       </div>
 
-      {/* Page Indicators (Dots) */}
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-1.5 mt-2">
           {Array.from({ length: totalPages }).map((_, index) => (
