@@ -1,6 +1,6 @@
 "use client";
 
-import { Mic, MicOff, Video, VideoOff, Monitor, PhoneOff } from "lucide-react";
+import { Mic, MicOff, Video, VideoOff, Monitor, PhoneOff, PictureInPicture2 } from "lucide-react";
 
 export function MeetingControls({
   isMuted,
@@ -10,7 +10,8 @@ export function MeetingControls({
   onToggleMute,
   onToggleVideo,
   onToggleScreenShare,
-  onLeaveMeeting
+  onLeaveMeeting,
+  onOpenPiP
 }) {
   return (
     <div className="flex-shrink-0 bg-gray-100 border-t border-gray-200 px-4 py-4">
@@ -59,6 +60,16 @@ export function MeetingControls({
         >
           <Monitor size={18} />
         </button>
+
+        {typeof onOpenPiP === 'function' && (
+          <button
+            onClick={onOpenPiP}
+            className="p-3 rounded-lg bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+            title="Open Picture-in-Picture"
+          >
+            <PictureInPicture2 size={18} />
+          </button>
+        )}
 
         <button
           onClick={onLeaveMeeting}

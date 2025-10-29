@@ -16,13 +16,14 @@ import { ParticipantsSidebar } from "./ParticipantsSidebar";
 import { MeetingHeader } from "./MeetingHeader";
 import { VideoGrid } from "./VideoGrid";
 import { MeetingControls } from "./MeetingControls";
+import DocumentPiP from "./DocumentPiP";
 
 export function MeetingRoom({ meetingData }) {
   const { Meeting, Attendee } = meetingData || {};
+  const [showPiP, setShowPiP] = useState(false);
+  const [pipWindow, setPipWindow] = useState(null);
 
   const meetingSessionRef = useRef(null);
-  const videoTilesRef = useRef(new Map());
-  const containerRef = useRef(null);
   const localVideoRef = useRef(null);
   const previewVideoRef = useRef(null);
   const audioElementRef = useRef(null);
@@ -952,6 +953,20 @@ export function MeetingRoom({ meetingData }) {
     }
   };
 
+  const openPiP = async () => {
+    try {
+      if ('documentPictureInPicture' in window) {
+        const win = await window.documentPictureInPicture.requestWindow({ width: 360, height: 520 });
+        setPipWindow(win);
+        setShowPiP(true);
+      } else {
+        setShowPiP(true);
+      }
+    } catch (e) {
+      setShowPiP(true);
+    }
+  };
+
   return (
     <div className="h-screen bg-white flex flex-col overflow-hidden">
       {!isConnected ? (
@@ -1007,6 +1022,7 @@ export function MeetingRoom({ meetingData }) {
               onToggleVideo={toggleVideo}
               onToggleScreenShare={toggleScreenShare}
               onLeaveMeeting={leaveMeeting}
+              onOpenPiP={openPiP}
             />
           </div>
 
@@ -1019,6 +1035,22 @@ export function MeetingRoom({ meetingData }) {
             localUserName={localUserName}
             isLocalUserHost={isHost}
           />
+          {showPiP && (
+            <DocumentPiP
+              meetingSessionRef={meetingSessionRef}
+              participants={participants}
+              localUserName={localUserName}
+              isMuted={isMuted}
+              isVideoEnabled={isVideoEnabled}
+              screenShareState={screenShareState}
+              onToggleMute={toggleMute}
+              onToggleVideo={toggleVideo}
+              onToggleScreenShare={toggleScreenShare}
+              onLeaveMeeting={leaveMeeting}
+              onClose={() => { setShowPiP(false); setPipWindow(null); }}
+              existingWindow={pipWindow}
+            />
+          )}
         </div>
       )}
     </div>
