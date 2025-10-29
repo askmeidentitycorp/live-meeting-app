@@ -7,7 +7,7 @@ function ParticipantCard({ participant, size = "default" }) {
   const isSmall = size === "small";
   
   return (
-    <div className={`relative bg-gray-200 rounded-lg overflow-hidden border border-gray-300 ${isSmall ? 'aspect-video' : ''}`}>
+    <div className={`relative bg-gray-200 rounded-lg overflow-hidden border border-gray-300 ${isSmall ? 'aspect-video' : 'w-full h-full'}`}>
       {participant.isLocal ? (
         <>
           <video
@@ -15,7 +15,7 @@ function ParticipantCard({ participant, size = "default" }) {
             autoPlay
             playsInline
             muted
-            className={`w-full h-full object-cover ${participant.videoEnabled ? 'block' : 'hidden'}`}
+            className={`w-full h-full object-contain ${participant.videoEnabled ? 'block' : 'hidden'}`}
           />
           {!participant.videoEnabled && (
             <div className="absolute inset-0 flex flex-col items-center justify-center">
@@ -41,7 +41,7 @@ function ParticipantCard({ participant, size = "default" }) {
               id={`video-${participant?.attendeeId}`}
               autoPlay
               playsInline
-              className="w-full h-full object-cover"
+              className="w-full h-full object-contain"
             />
           )}
           {!participant?.videoEnabled && (
@@ -232,8 +232,8 @@ export function VideoGrid({
   }
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="flex-1 grid gap-2" style={getGridLayout(currentParticipants.length)}>
+    <div className="h-full flex flex-col overflow-hidden">
+      <div className="flex-1 grid gap-2 min-h-0" style={getGridLayout(currentParticipants.length)}>
         {currentParticipants.map((participant) => (
           <ParticipantCard 
             key={participant?.attendeeId} 
@@ -243,7 +243,7 @@ export function VideoGrid({
       </div>
 
       {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-1.5 mt-2">
+        <div className="flex items-center justify-center gap-1.5 mt-2 flex-shrink-0">
           {Array.from({ length: totalPages }).map((_, index) => (
             <button
               key={index}

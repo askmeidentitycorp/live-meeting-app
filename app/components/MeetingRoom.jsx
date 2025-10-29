@@ -863,8 +863,7 @@ export function MeetingRoom({ meetingData }) {
       setConnectionError(null);
 
       if (screenShareState?.isMyShare) {
-        // Stop sharing - simple approach
-        // Immediate UI cleanup
+
         setScreenShareState({
           isSharing: false,
           isMyShare: false,
