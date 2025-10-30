@@ -11,7 +11,8 @@ export function MeetingControls({
   onToggleVideo,
   onToggleScreenShare,
   onLeaveMeeting,
-  onOpenPiP
+  onOpenPiP,
+  isScreenShareSupported = true
 }) {
   return (
     <div className="flex-shrink-0 bg-gray-100 border-t border-gray-200 px-4 py-4">
@@ -42,20 +43,24 @@ export function MeetingControls({
 
         <button
           onClick={onToggleScreenShare}
-          disabled={isRemoteScreenSharing && !isLocalScreenSharing}
+          disabled={!isScreenShareSupported || (isRemoteScreenSharing && !isLocalScreenSharing)}
           className={`p-3 rounded-lg ${
-            isLocalScreenSharing
-              ? 'bg-blue-500 text-white hover:bg-blue-600'
-              : isRemoteScreenSharing && !isLocalScreenSharing
-                ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+            !isScreenShareSupported
+              ? 'bg-gray-200 text-gray-500 cursor-not-allowed opacity-60'
+              : isLocalScreenSharing
+                ? 'bg-blue-500 text-white hover:bg-blue-600'
+                : isRemoteScreenSharing && !isLocalScreenSharing
+                  ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
           } transition-colors`}
           title={
-            isLocalScreenSharing 
-              ? 'Stop sharing' 
-              : isRemoteScreenSharing && !isLocalScreenSharing 
-                ? 'Someone else is sharing' 
-                : 'Share screen'
+            !isScreenShareSupported
+              ? 'Screen sharing not supported on this device'
+              : isLocalScreenSharing 
+                ? 'Stop sharing' 
+                : isRemoteScreenSharing && !isLocalScreenSharing 
+                  ? 'Someone else is sharing' 
+                  : 'Share screen'
           }
         >
           <Monitor size={18} />

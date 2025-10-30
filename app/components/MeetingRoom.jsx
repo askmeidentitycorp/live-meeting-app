@@ -24,6 +24,7 @@ export function MeetingRoom({ meetingData }) {
   const [showPiP, setShowPiP] = useState(false);
   const [pipWindow, setPipWindow] = useState(null);
   const [pipSupported, setPipSupported] = useState(false);
+  const [screenShareSupported, setScreenShareSupported] = useState(false);
 
   const meetingSessionRef = useRef(null);
   const localVideoRef = useRef(null);
@@ -350,6 +351,16 @@ export function MeetingRoom({ meetingData }) {
       setPipSupported(!!supported);
     } catch {
       setPipSupported(false);
+    }
+  }, []);
+
+  // Detect screen sharing support (getDisplayMedia)
+  useEffect(() => {
+    try {
+      const supported = !!(navigator?.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function');
+      setScreenShareSupported(!!supported);
+    } catch (e) {
+      setScreenShareSupported(false);
     }
   }, []);
 
@@ -900,10 +911,21 @@ export function MeetingRoom({ meetingData }) {
 
       } else {
         // Start sharing
-        const stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { mediaSource: 'screen' },
-          audio: false
-        });
+        if (!navigator?.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
+          addNotification('Screen sharing is not supported on this device or browser.', 'error');
+          return;
+        }
+
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+
+        // Ensure we actually have a video track
+        if (!stream || !stream.getVideoTracks || stream.getVideoTracks().length === 0) {
+          addNotification('Screen sharing failed: no video track was returned by the browser.', 'error');
+          if (stream && stream.getTracks) {
+            stream.getTracks().forEach(t => t.stop());
+          }
+          return;
+        }
 
         // Handle browser stop
         const videoTrack = stream.getVideoTracks()[0];
@@ -926,8 +948,8 @@ export function MeetingRoom({ meetingData }) {
           });
         }
 
-        // Start content share
-        await meetingSessionRef.current.audioVideo.startContentShare(stream);
+  // Start content share
+  await meetingSessionRef.current.audioVideo.startContentShare(stream);
 
         // Set state immediately
         setScreenShareState({
@@ -939,12 +961,16 @@ export function MeetingRoom({ meetingData }) {
       }
 
     } catch (error) {
-      if (error?.name === 'NotAllowedError') {
-        addNotification("Screen sharing permission denied", "error");
+      console.error('toggleScreenShare error:', error);
+
+      if (!navigator?.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
+        addNotification('Screen sharing is not supported on this device or browser.', 'error');
+      } else if (error?.name === 'NotAllowedError') {
+        addNotification('Screen sharing permission denied', 'error');
       } else if (error?.name === 'AbortError') {
-        addNotification("Screen sharing was cancelled", "warning");
+        addNotification('Screen sharing was cancelled', 'warning');
       } else {
-        addNotification("Screen sharing failed. Please try again.", "error");
+        addNotification(`Screen sharing failed: ${error?.name || ''} ${error?.message || ''}`, 'error');
       }
 
       // Keep legacy connectionError cleared when using notifications
