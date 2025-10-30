@@ -145,14 +145,12 @@ export function ParticipantsSidebar({
 
   return (
     <>
-      {/* Desktop / large screens: slide-out sidebar */}
       <div className={`hidden sm:flex ${showParticipantsList ? 'w-72' : 'w-0'} transition-all duration-300 bg-white border-l border-gray-200 overflow-hidden flex flex-col shadow-lg`}>
         {showParticipantsList && content}
       </div>
 
-      {/* Mobile: snackbar-style overlay */}
-      <div className="sm:hidden fixed left-4 right-4 bottom-4 z-50 flex justify-end">
-        <div className={`w-full max-w-md transform transition-all duration-300 ${showParticipantsList ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0 pointer-events-none'}`} role="dialog" aria-modal={showParticipantsList}>
+      <div className={`sm:hidden fixed left-4 right-4 bottom-4 z-50 flex justify-end ${showParticipantsList ? '' : 'pointer-events-none'}`}>
+        <div className={`w-full max-w-md transform transition-all duration-300 ${showParticipantsList ? 'translate-y-0 opacity-100' : 'translate-y-6 opacity-0'}`} role="dialog" aria-modal={showParticipantsList}>
           <div className="bg-white rounded-xl shadow-lg border border-gray-200 overflow-hidden">
             {content}
           </div>

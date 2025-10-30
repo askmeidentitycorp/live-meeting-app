@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { VideoOff, MicOff, Monitor, ChevronUp, ChevronDown, Maximize, Minimize } from "lucide-react";
+import { VideoOff, MicOff, Monitor, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Maximize, Minimize } from "lucide-react";
 
 function ParticipantCard({ participant, size = "default" }) {
   const isSmall = size === "small";
-  
+
   return (
-    <div className={`relative bg-gray-200 rounded-lg overflow-hidden border border-gray-300 ${isSmall ? 'aspect-video' : 'w-full h-full'}`}>
+    <div className={`relative bg-gray-200 rounded-lg overflow-hidden border border-gray-300 ${isSmall ? 'aspect-square lg:aspect-video' : 'w-full h-full'}`}>
       {participant.isLocal ? (
         <>
           <video
@@ -50,9 +50,8 @@ function ParticipantCard({ participant, size = "default" }) {
               {!isSmall && <p className="text-gray-600 text-sm mt-2">{participant?.name}</p>}
             </div>
           )}
-          <div className={`absolute ${isSmall ? 'bottom-1 left-1' : 'bottom-2 left-2'} ${isSmall ? 'px-1 py-0.5' : 'px-2 py-1'} rounded text-xs font-medium text-white ${
-            participant?.isActiveSpeaker ? 'bg-green-500' : 'bg-blue-500'
-          }`}>
+          <div className={`absolute ${isSmall ? 'bottom-1 left-1' : 'bottom-2 left-2'} ${isSmall ? 'px-1 py-0.5' : 'px-2 py-1'} rounded text-xs font-medium text-white ${participant?.isActiveSpeaker ? 'bg-green-500' : 'bg-blue-500'
+            }`}>
             {participant?.name}
           </div>
           {participant?.muted && (
@@ -69,7 +68,7 @@ function ParticipantCard({ participant, size = "default" }) {
 function getGridLayout(count) {
   const cols = Math.ceil(Math.sqrt(count));
   const rows = Math.ceil(count / cols);
-  
+
   return {
     gridTemplateColumns: `repeat(${cols}, 1fr)`,
     gridTemplateRows: `repeat(${rows}, 1fr)`
@@ -116,13 +115,26 @@ export function VideoGrid({
   }
 
   const scrollSidebar = (direction) => {
-    if (sidebarScrollRef.current) {
-      const scrollAmount = 150; 
-      const currentScroll = sidebarScrollRef.current.scrollTop;
-      sidebarScrollRef.current.scrollTo({
-        top: direction === 'up' ? currentScroll - scrollAmount : currentScroll + scrollAmount,
-        behavior: 'smooth'
-      });
+    const el = sidebarScrollRef.current;
+    if (!el) return;
+
+    const scrollAmount = 150;
+    const isHorizontal = el.scrollWidth > el.clientWidth;
+
+    if (isHorizontal) {
+      const current = el.scrollLeft;
+      if (direction === 'left' || direction === 'up') {
+        el.scrollTo({ left: current - scrollAmount, behavior: 'smooth' });
+      } else {
+        el.scrollTo({ left: current + scrollAmount, behavior: 'smooth' });
+      }
+    } else {
+      const current = el.scrollTop;
+      if (direction === 'up') {
+        el.scrollTo({ top: current - scrollAmount, behavior: 'smooth' });
+      } else {
+        el.scrollTo({ top: current + scrollAmount, behavior: 'smooth' });
+      }
     }
   };
 
@@ -177,7 +189,7 @@ export function VideoGrid({
 
   if (contentShareTileId && (isLocalScreenSharing || isRemoteScreenSharing)) {
     return (
-      <div className="h-full flex gap-3">
+      <div className="h-full flex lg:flex-row flex-col md:flex-col gap-3">
         <div ref={screenShareRef} className="flex-1 bg-black rounded-lg overflow-hidden border border-gray-300 relative">
           <video
             ref={contentShareVideoRef}
@@ -199,42 +211,37 @@ export function VideoGrid({
           </button>
         </div>
 
-        <div className="w-60 flex flex-col gap-2">
+        <div className="lg:w-60 w-[93vw] overflow-scroll flex flex-row lg:flex-col gap-2">
           <button
             onClick={() => scrollSidebar('up')}
-            className="p-2 rounded-lg transition-colors bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center"
+            className="p-2 rounded-lg transition-colors bg-gray-100 hover:bg-gray-200 text-gray-700 hidden lg:flex lg:items-center lg:justify-center"
             title="Scroll Up"
           >
             <ChevronUp className="w-5 h-5" />
           </button>
 
-          <div 
+          <div
             ref={sidebarScrollRef}
-            className="flex-1 flex flex-col gap-2 overflow-y-auto"
+            className="participant-scroll flex-1 flex flex-row lg:flex-col gap-2 overflow-x-auto lg:overflow-y-auto scroll-smooth"
             style={{
               scrollbarWidth: 'none',
               msOverflowStyle: 'none',
             }}
           >
             <style jsx>{`
-              div::-webkit-scrollbar {
+              .participant-scroll::-webkit-scrollbar {
                 display: none;
               }
             `}</style>
-            
+
             {allParticipants.map((participant) => (
               <div
                 key={participant?.attendeeId}
-                style={{
-                  height: '135px',
-                  minHeight: '135px',
-                  maxHeight: '135px',
-                  flexShrink: 0
-                }}
+                className="lg:h-[135px] lg:min-h-[135px] lg:max-h-[135px] lg:flex-shrink-0 lg:w-full w-[110px] flex-shrink-0"
               >
-                <ParticipantCard 
-                  participant={participant} 
-                  size="small" 
+                <ParticipantCard
+                  participant={participant}
+                  size="small"
                 />
               </div>
             ))}
@@ -242,7 +249,7 @@ export function VideoGrid({
 
           <button
             onClick={() => scrollSidebar('down')}
-            className="p-2 rounded-lg transition-colors bg-gray-100 hover:bg-gray-200 text-gray-700 flex items-center justify-center"
+            className="p-2 rounded-lg transition-colors bg-gray-100 hover:bg-gray-200 text-gray-700 hidden lg:flex lg:items-center lg:justify-center"
             title="Scroll Down"
           >
             <ChevronDown className="w-5 h-5" />
@@ -253,12 +260,12 @@ export function VideoGrid({
   }
 
   return (
-    <div className="h-full flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col  overflow-hidden">
       <div className="flex-1 grid gap-2 min-h-0" style={getGridLayout(currentParticipants.length)}>
         {currentParticipants.map((participant) => (
-          <ParticipantCard 
-            key={participant?.attendeeId} 
-            participant={participant} 
+          <ParticipantCard
+            key={participant?.attendeeId}
+            participant={participant}
           />
         ))}
       </div>
@@ -269,11 +276,10 @@ export function VideoGrid({
             <button
               key={index}
               onClick={() => setCurrentPage(index)}
-              className={`w-2 h-2 rounded-full transition-all ${
-                index === currentPage
+              className={`w-2 h-2 rounded-full transition-all ${index === currentPage
                   ? 'bg-blue-500 w-4'
                   : 'bg-gray-300 hover:bg-gray-400'
-              }`}
+                }`}
               title={`Go to page ${index + 1}`}
             />
           ))}
