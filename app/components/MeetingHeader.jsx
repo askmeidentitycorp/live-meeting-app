@@ -28,24 +28,27 @@ export function MeetingHeader({
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Recording Controls - Only visible to host */}
           {isHost && meetingId && (
             <RecordingControls meetingId={meetingId} isHost={isHost} />
           )}
           
-          <div className="bg-gray-200 px-3 py-1 rounded text-sm text-gray-700">
-            {participants.filter(p => !p.isLocal).length + 1} participant{participants.filter(p => !p.isLocal).length !== 0 ? 's' : ''}
-          </div>
           <button
             onClick={onToggleParticipants}
-            className={`p-2 rounded transition-colors cursor-pointer ${
+            className={`flex items-center gap-2 px-3 py-1 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 ${
               showParticipantsList
-                ? 'bg-blue-500 text-white'
-                : 'text-gray-600 hover:bg-gray-200'
+                ? 'bg-blue-500 text-white focus:ring-blue-300'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300 focus:ring-gray-300'
             }`}
             title="Participants"
+            aria-pressed={showParticipantsList}
           >
             <Users size={16} />
+            <span className="hidden sm:inline text-sm font-medium">Participants</span>
+            <span className={`ml-2 inline-flex items-center justify-center w-6 h-6 rounded-full text-sm font-semibold ${
+              showParticipantsList ? 'bg-white text-blue-600' : 'bg-white text-gray-700'
+            }`}>
+              {participants.filter(p => !p.isLocal).length + 1}
+            </span>
           </button>
         </div>
       </div>

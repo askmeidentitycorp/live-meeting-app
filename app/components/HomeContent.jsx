@@ -222,6 +222,15 @@ export default function HomeContent() {
                     const json = await res.json();
                     if (!res.ok) throw new Error(json?.error || "Failed to create meeting");
                     const meetingId = json?.Meeting?.MeetingId;
+                    if (!meetingId) {
+                      // Defensive: if server didn't return an id, stop loading and show error
+                      setCreating(false);
+                      setError('Failed to create meeting (no meeting id returned)');
+                      return;
+                    }
+
+                    // Reset creating state before navigating in case navigation is prevented
+                    setCreating(false);
                     window.location.href = `/meeting/${meetingId}?name=${encodeURIComponent(json?.hostInfo?.name || "Host")}`;
                   } catch (err) {
                     setError(err?.message || "Failed to create meeting");

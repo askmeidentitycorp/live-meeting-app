@@ -42,9 +42,17 @@ export function PreMeetingLobby({
   meetingId
 }) {
   return (
-    <div className="flex-1 flex items-start justify-center overflow-y-auto">
-      <div className="bg-gray-100 rounded-lg border border-gray-200 p-6 max-w-md w-full my-8">
-
+    <div className="flex-1 flex items-start justify-center overflow-y-auto no-scrollbar">
+      <style jsx>{`
+        .no-scrollbar {
+          scrollbar-width: none; /* Firefox */
+          -ms-overflow-style: none; /* IE 10+ */
+        }
+        .no-scrollbar::-webkit-scrollbar {
+          display: none; /* WebKit */
+        }
+      `}</style>
+      <div className="bg-gray-100 m-4 rounded-lg border border-gray-200 p-6 max-w-md w-full my-8">
         <div className="text-center mb-4">
           <h1 className="text-2xl font-semibold text-gray-900 mb-2">Join Meeting</h1>
           <p className="text-gray-600 text-sm">Configure your devices and join the call</p>

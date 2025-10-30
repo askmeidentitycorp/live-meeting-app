@@ -17,6 +17,7 @@ import { MeetingHeader } from "./MeetingHeader";
 import { VideoGrid } from "./VideoGrid";
 import { MeetingControls } from "./MeetingControls";
 import DocumentPiP from "./DocumentPiP";
+import { useNotifications } from "../contexts/NotificationContext";
 
 export function MeetingRoom({ meetingData }) {
   const { Meeting, Attendee } = meetingData || {};
@@ -46,6 +47,7 @@ export function MeetingRoom({ meetingData }) {
     screenShareStateRef.current = screenShareState;
   }, [screenShareState]);
   const [connectionError, setConnectionError] = useState(null);
+  const { addNotification } = useNotifications();
   const [isLeavingMeeting, setIsLeavingMeeting] = useState(false);
 
   let localUserName = 'You';
@@ -938,12 +940,15 @@ export function MeetingRoom({ meetingData }) {
 
     } catch (error) {
       if (error?.name === 'NotAllowedError') {
-        setConnectionError("Screen sharing permission denied");
+        addNotification("Screen sharing permission denied", "error");
       } else if (error?.name === 'AbortError') {
-        setConnectionError("Screen sharing was cancelled");
+        addNotification("Screen sharing was cancelled", "warning");
       } else {
-        setConnectionError("Screen sharing failed. Please try again.");
+        addNotification("Screen sharing failed. Please try again.", "error");
       }
+
+      // Keep legacy connectionError cleared when using notifications
+      setConnectionError(null);
 
       setScreenShareState({
         isSharing: false,
