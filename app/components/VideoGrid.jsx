@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { VideoOff, MicOff, Monitor, ChevronUp, ChevronDown, Maximize, Minimize } from "lucide-react";
 
 function ParticipantCard({ participant, size = "default" }) {
@@ -153,6 +153,27 @@ export function VideoGrid({
       console.error('Error toggling fullscreen:', error);
     }
   };
+
+  useEffect(() => {
+    const handleFullScreenChange = () => {
+      const fsActive = !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.msFullscreenElement
+      );
+      setIsFullscreen(fsActive);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullScreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullScreenChange);
+    document.addEventListener('msfullscreenchange', handleFullScreenChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullScreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullScreenChange);
+      document.removeEventListener('msfullscreenchange', handleFullScreenChange);
+    };
+  }, []);
 
   if (contentShareTileId && (isLocalScreenSharing || isRemoteScreenSharing)) {
     return (
