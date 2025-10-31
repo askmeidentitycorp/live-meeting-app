@@ -743,7 +743,25 @@ export function MeetingRoom({ meetingData }) {
       if (selectedAudioInput) {
         await meetingSessionRef.current.audioVideo.startAudioInput(selectedAudioInput);
       }
-      meetingSessionRef.current.audioVideo.bindAudioElement(audioElementRef.current);
+      // Ensure the audio element exists (it may have been removed on leave)
+      try {
+        if (!audioElementRef.current) {
+          const audioEl = document.createElement('audio');
+          audioEl.autoplay = true;
+          audioEl.controls = false;
+          document.body.appendChild(audioEl);
+          audioElementRef.current = audioEl;
+        }
+      } catch (e) {
+        console.error('failed to create audio element:', e);
+      }
+
+      try {
+        meetingSessionRef.current.audioVideo.bindAudioElement(audioElementRef.current);
+      } catch (bindError) {
+        console.error('Cannot bind audio element:', bindError);
+        throw bindError;
+      }
 
       if (isVideoEnabled && selectedVideoInput) {
         await meetingSessionRef.current.audioVideo.startVideoInput(selectedVideoInput);
@@ -761,6 +779,7 @@ export function MeetingRoom({ meetingData }) {
       }
 
     } catch (error) {
+      console.error('startMeeting error:', error);
       // Handle specific error cases
       if (error?.message?.includes("AudioJoinedFromAnotherDevice")) {
         setConnectionError("Multiple sessions detected. Each participant needs a unique name. Please refresh and try again.");
@@ -814,6 +833,31 @@ export function MeetingRoom({ meetingData }) {
         }
       }
     }
+
+    // Try to clean up audio element and the session reference so a fresh session can be created
+    try {
+      if (audioElementRef?.current) {
+        try {
+          meetingSessionRef?.current?.audioVideo?.unbindAudioElement();
+        } catch (e) {
+          // ignore
+        }
+        try {
+          audioElementRef.current.remove();
+        } catch (e) {
+          // ignore
+        }
+        audioElementRef.current = null;
+      }
+    } catch (err) {
+      // ignore
+    }
+
+    // Keep the meetingSessionRef so it can be reused if the user rejoins.
+    // We previously nulled this to force a fresh session, but that caused
+    // 'Meeting session not initialized' when attempting to rejoin without
+    // a full component remount. Leaving the stopped session object allows
+    // startMeeting to call audioVideo.start() again.
 
     // Clear any error messages
     setConnectionError(null);
