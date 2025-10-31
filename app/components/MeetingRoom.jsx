@@ -32,6 +32,8 @@ export function MeetingRoom({ meetingData }) {
   const audioElementRef = useRef(null);
   const previewStreamRef = useRef(null);
   const contentShareVideoRef = useRef(null);
+  const presenceSetRef = useRef(new Set());
+  const joinSoundEnabledRef = useRef(false);
   const screenShareStateRef = useRef({ isSharing: false, isMyShare: false, tileId: null, attendeeId: null });
 
   const [isConnected, setIsConnected] = useState(false);
@@ -153,6 +155,8 @@ export function MeetingRoom({ meetingData }) {
           audioVideoDidStart: () => {
             setIsConnected(true);
             setConnectionError(null);
+            // Allow join sounds after the meeting is fully started
+            joinSoundEnabledRef.current = true;
           },
 
           audioVideoDidStop: async (sessionStatus) => {
@@ -276,21 +280,40 @@ export function MeetingRoom({ meetingData }) {
         session?.audioVideo?.addObserver(meetingObserver);
         session?.audioVideo?.addContentShareObserver(contentShareObserver);
 
+        // Play a short join sound when a remote attendee arrives (but only after meeting start)
         session?.audioVideo?.realtimeSubscribeToAttendeeIdPresence((attendeeId, present, externalUserId) => {
-          // Store the external user ID mapping
-          if (present && externalUserId) {
-            setAttendeeRoster(prev => {
-              const newRoster = new Map(prev);
-              newRoster.set(attendeeId, externalUserId);
-              return newRoster;
-            });
-          } else if (!present) {
-            setAttendeeRoster(prev => {
-              const newRoster = new Map(prev);
-              newRoster.delete(attendeeId);
-              return newRoster;
-            });
+          try {
+            // Track roster mapping
+            if (present && externalUserId) {
+              setAttendeeRoster(prev => {
+                const newRoster = new Map(prev);
+                newRoster.set(attendeeId, externalUserId);
+                return newRoster;
+              });
+            } else if (!present) {
+              setAttendeeRoster(prev => {
+                const newRoster = new Map(prev);
+                newRoster.delete(attendeeId);
+                return newRoster;
+              });
+            }
+
+            // Play join sound for new remote attendees (ignore local user)
+            const isLocal = attendeeId === Attendee?.AttendeeId;
+            const wasPresent = presenceSetRef.current.has(attendeeId);
+
+            if (present) {
+              presenceSetRef.current.add(attendeeId);
+              if (!wasPresent && !isLocal && joinSoundEnabledRef.current) {
+                playJoinSound();
+              }
+            } else {
+              presenceSetRef.current.delete(attendeeId);
+            }
+          } catch (e) {
+            // ignore
           }
+
           handleAttendeePresenceChange(attendeeId, present, externalUserId);
         });
 
@@ -553,6 +576,32 @@ export function MeetingRoom({ meetingData }) {
     );
   };
 
+  // Play a short join sound using Web Audio API
+  const playJoinSound = () => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.value = 880; // A5
+      g.gain.setValueAtTime(0.0001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start(ctx.currentTime);
+      o.stop(ctx.currentTime + 0.23);
+      // close context after sound plays
+      setTimeout(() => {
+        try { ctx.close(); } catch (e) { }
+      }, 500);
+    } catch (e) {
+      // ignore play errors
+    }
+  };
+
   const handleMeetingEndReason = (statusCode) => {
     switch (statusCode) {
       case 1:
@@ -793,13 +842,11 @@ export function MeetingRoom({ meetingData }) {
         setConnectionError(`Failed to start meeting: ${error?.message || 'Unknown error'}`);
       }
 
-      // Clean up on failure
       try {
         if (meetingSessionRef?.current) {
           meetingSessionRef.current.audioVideo.stop();
         }
       } catch (cleanupError) {
-        // Silent error handling
       }
     }
   };
@@ -810,56 +857,39 @@ export function MeetingRoom({ meetingData }) {
 
     if (meetingSessionRef?.current) {
       try {
-        // Stop video first
         if (isVideoEnabled) {
           meetingSessionRef.current.audioVideo.stopLocalVideoTile();
           await meetingSessionRef.current.audioVideo.stopVideoInput();
         }
 
-        // Stop screen sharing if active
         if (screenShareState?.isMyShare) {
           meetingSessionRef.current.audioVideo.stopContentShare();
         }
 
-        // Stop the entire session
         meetingSessionRef.current.audioVideo.stop();
 
       } catch (error) {
-        // Force stop if there's an error
         try {
           meetingSessionRef?.current?.audioVideo?.stop();
         } catch (forceStopError) {
-          // Silent error handling
         }
       }
     }
 
-    // Try to clean up audio element and the session reference so a fresh session can be created
     try {
       if (audioElementRef?.current) {
         try {
           meetingSessionRef?.current?.audioVideo?.unbindAudioElement();
         } catch (e) {
-          // ignore
         }
         try {
           audioElementRef.current.remove();
         } catch (e) {
-          // ignore
         }
         audioElementRef.current = null;
       }
     } catch (err) {
-      // ignore
     }
-
-    // Keep the meetingSessionRef so it can be reused if the user rejoins.
-    // We previously nulled this to force a fresh session, but that caused
-    // 'Meeting session not initialized' when attempting to rejoin without
-    // a full component remount. Leaving the stopped session object allows
-    // startMeeting to call audioVideo.start() again.
-
-    // Clear any error messages
     setConnectionError(null);
     setIsLeavingMeeting(false);
   };
