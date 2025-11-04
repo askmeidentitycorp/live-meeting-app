@@ -322,15 +322,34 @@ export function MeetingRoom({ meetingData }) {
           updateParticipantMuteStatus(Attendee?.AttendeeId, muted);
         });
 
+        // Subscribe to data messages for recording notifications
+        session?.audioVideo?.realtimeSubscribeToReceiveDataMessage('RECORDING_EVENT', (dataMessage) => {
+          try {
+            const data = JSON.parse(dataMessage.text());
+            if (data.type === 'RECORDING_STARTED') {
+              addNotification("🔴 Recording started - This meeting is being recorded", "info");
+            } else if (data.type === 'RECORDING_STOPPED') {
+              addNotification("Recording stopped", "info");
+            }
+          } catch (e) {
+            console.error('Error parsing data message:', e);
+          }
+        });
+
         try {
+          // Configure active speaker policy with more sensitive thresholds
+          const activeSpeakerPolicy = new DefaultActiveSpeakerPolicy();
+          
           session?.audioVideo?.subscribeToActiveSpeakerDetector(
-            new DefaultActiveSpeakerPolicy(),
+            activeSpeakerPolicy,
             (activeSpeakers) => {
-              updateActiveSpeakers(activeSpeakers);
+              // Active speakers are just attendee ID strings, not objects
+              const speakerIds = Array.isArray(activeSpeakers) ? activeSpeakers : [];
+              updateActiveSpeakers(speakerIds);
             }
           );
         } catch (error) {
-          // Silent error handling
+          console.error('Active speaker detection error:', error);
         }
 
         await loadAvailableDevices();
@@ -518,16 +537,22 @@ export function MeetingRoom({ meetingData }) {
           }
         }
 
-        // Subscribe to this attendee's volume indicator for mute status tracking
-        if (meetingSessionRef?.current && !isLocal) {
+        // Subscribe to this attendee's volume indicator for mute status and active speaker tracking
+        if (meetingSessionRef?.current) {
           meetingSessionRef.current.audioVideo.realtimeSubscribeToVolumeIndicator(
             attendeeId,
             (id, volume, muted, signalStrength) => {
               // The muted parameter from the callback is the actual mute state
               // Update immediately when we receive it
-              if (muted !== null && muted !== undefined) {
+              if (!isLocal && muted !== null && muted !== undefined) {
                 updateParticipantMuteStatus(id, muted);
               }
+              
+              // Use volume to determine active speaker
+              // Volume is typically 0-1, where 0 is silence and 1 is max
+              // Consider speaking if volume > 0.01 (1%) and not muted
+              const isSpeaking = volume > 0.01 && !muted;
+              updateParticipantActiveSpeaker(id, isSpeaking);
             }
           );
         }
@@ -561,18 +586,24 @@ export function MeetingRoom({ meetingData }) {
     );
   };
 
-  const updateActiveSpeakers = (activeSpeakers) => {
+  const updateParticipantActiveSpeaker = (attendeeId, isActive) => {
     setParticipants(prev =>
-      prev.map(p => {
-        const isActive = activeSpeakers?.some(speaker => speaker?.attendeeId === p?.attendeeId);
-        // If someone is an active speaker, they must be unmuted
-        // But don't override null state unless they're actually speaking
-        return {
-          ...p,
-          isActiveSpeaker: isActive,
-          muted: isActive ? false : p?.muted // If speaking, definitely unmuted; otherwise keep current state
-        };
-      })
+      prev.map(p =>
+        p?.attendeeId === attendeeId ? { ...p, isActiveSpeaker: isActive } : p
+      )
+    );
+  };
+
+  const updateActiveSpeakers = (activeSpeakers) => {
+    // activeSpeakers is an array of attendee ID strings
+    const activeSpeakerIds = Array.isArray(activeSpeakers) ? activeSpeakers : [];
+    
+    setParticipants(prev =>
+      prev.map(p => ({
+        ...p,
+        isActiveSpeaker: activeSpeakerIds.includes(p?.attendeeId),
+        muted: activeSpeakerIds.includes(p?.attendeeId) ? false : p?.muted
+      }))
     );
   };
 
@@ -1113,6 +1144,7 @@ export function MeetingRoom({ meetingData }) {
               onToggleParticipants={() => setShowParticipantsList(!showParticipantsList)}
               meetingId={meetingId}
               isHost={isHost}
+              meetingSessionRef={meetingSessionRef}
             />
 
             <div className="flex-1 p-3 min-h-0">

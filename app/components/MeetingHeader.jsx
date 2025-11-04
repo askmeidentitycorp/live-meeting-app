@@ -10,7 +10,8 @@ export function MeetingHeader({
   showParticipantsList,
   onToggleParticipants,
   meetingId,
-  isHost
+  isHost,
+  meetingSessionRef
 }) {
   return (
     <div className="flex-shrink-0 bg-gray-100 border-b border-gray-200 px-4 py-3">
@@ -29,7 +30,11 @@ export function MeetingHeader({
 
         <div className="flex items-center gap-3">
           {isHost && meetingId && (
-            <RecordingControls meetingId={meetingId} isHost={isHost} />
+            <RecordingControls 
+            meetingId={meetingId} 
+            isHost={isHost}
+            meetingSessionRef={meetingSessionRef}
+          />
           )}
           
           <button

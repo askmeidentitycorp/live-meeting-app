@@ -5,9 +5,14 @@ import { VideoOff, MicOff, Monitor, ChevronUp, ChevronDown, ChevronLeft, Chevron
 
 function ParticipantCard({ participant, size = "default" }) {
   const isSmall = size === "small";
-
+  const isActiveSpeaker = participant?.isActiveSpeaker;
+  
   return (
-    <div className={`relative bg-gray-200 rounded-lg overflow-hidden border border-gray-300 ${isSmall ? 'aspect-square lg:aspect-video' : 'w-full h-full'}`}>
+    <div className={`relative bg-gray-200 rounded-lg overflow-hidden transition-all duration-300 ${
+      isActiveSpeaker 
+        ? 'border-2 border-blue-500 ring-2 ring-blue-400 ring-opacity-50' 
+        : 'border border-gray-300'
+    } ${isSmall ? 'aspect-square lg:aspect-video' : 'w-full h-full'}`}>
       {participant.isLocal ? (
         <>
           <video
@@ -50,7 +55,7 @@ function ParticipantCard({ participant, size = "default" }) {
               {!isSmall && <p className="text-gray-600 text-sm mt-2">{participant?.name}</p>}
             </div>
           )}
-          <div className={`absolute ${isSmall ? 'bottom-1 left-1' : 'bottom-2 left-2'} ${isSmall ? 'px-1 py-0.5' : 'px-2 py-1'} rounded text-xs font-medium text-white ${participant?.isActiveSpeaker ? 'bg-green-500' : 'bg-blue-500'
+          <div className={`absolute ${isSmall ? 'bottom-1 left-1' : 'bottom-2 left-2'} ${isSmall ? 'px-1 py-0.5' : 'px-2 py-1'} rounded text-xs font-medium text-white ${participant?.isActiveSpeaker ? 'bg-blue-500' : 'bg-blue-500'
             }`}>
             {participant?.name}
           </div>
@@ -92,6 +97,9 @@ export function VideoGrid({
   const screenShareRef = useRef(null);
   const PARTICIPANTS_PER_PAGE = 9;
 
+  // Find the local participant from the participants array to get isActiveSpeaker status
+  const localParticipant = participants?.find(p => p?.isLocal);
+
   const allParticipants = [
     {
       isLocal: true,
@@ -99,7 +107,8 @@ export function VideoGrid({
       name: 'You',
       videoEnabled: isVideoEnabled,
       muted: isMuted,
-      videoRef: localVideoRef
+      videoRef: localVideoRef,
+      isActiveSpeaker: localParticipant?.isActiveSpeaker || false
     },
     ...(participants?.filter(p => !p?.isLocal) || [])
   ];

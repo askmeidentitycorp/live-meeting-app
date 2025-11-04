@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Radio, Square, Loader2, CheckCircle, Clock } from "lucide-react";
 import { useNotifications } from "../contexts/NotificationContext";
 
-export function RecordingControls({ meetingId, isHost }) {
+export function RecordingControls({ meetingId, isHost, meetingSessionRef }) {
   const [isRecording, setIsRecording] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [recordingStartTime, setRecordingStartTime] = useState(null);
@@ -78,7 +78,21 @@ export function RecordingControls({ meetingId, isHost }) {
       setRecordingStartTime(data.recording.startedAt);
       setElapsedTime(0);
       setProcessingJobId(null);
-      addNotification("Recording started", "success");
+      
+      // Broadcast recording started message to all participants
+      if (meetingSessionRef?.current) {
+        try {
+          meetingSessionRef.current.audioVideo.realtimeSendDataMessage(
+            'RECORDING_EVENT',
+            JSON.stringify({ type: 'RECORDING_STARTED' }),
+            1000 // lifetime in ms
+          );
+        } catch (e) {
+          console.error('Failed to send recording notification:', e);
+        }
+      }
+      
+      addNotification("🔴 Recording started - This meeting is being recorded", "info");
     } catch (err) {
       addNotification(err.message, "error");
     } finally {
@@ -106,6 +120,19 @@ export function RecordingControls({ meetingId, isHost }) {
       setRecordingStartTime(null);
       setElapsedTime(0);
       setRecordingInfo(data.recording);
+      
+      // Broadcast recording stopped message to all participants
+      if (meetingSessionRef?.current) {
+        try {
+          meetingSessionRef.current.audioVideo.realtimeSendDataMessage(
+            'RECORDING_EVENT',
+            JSON.stringify({ type: 'RECORDING_STOPPED' }),
+            1000 // lifetime in ms
+          );
+        } catch (e) {
+          console.error('Failed to send recording stop notification:', e);
+        }
+      }
       
       // Show notification that recording is stopped
       addNotification("Recording stopped. Waiting for clips to be saved...", "info");
