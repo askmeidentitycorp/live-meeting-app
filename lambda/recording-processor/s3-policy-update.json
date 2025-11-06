@@ -1,0 +1,30 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket",
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::chime-recordings-live-meeting-app",
+        "arn:aws:s3:::chime-recordings-live-meeting-app/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "mediaconvert:CreateJob",
+        "mediaconvert:GetJob"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::368289336576:role/MediaConvertChimeRecordingsRole"
+    }
+  ]
+}
