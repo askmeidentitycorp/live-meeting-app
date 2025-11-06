@@ -1,17 +1,12 @@
 import { 
-  MediaConvertClient, 
-  CreateJobCommand,
+  MediaConvertClient,
   GetJobCommand 
 } from "@aws-sdk/client-mediaconvert";
-import { S3Client, ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../auth/[...nextauth]/route";
 import { getMeeting, updateMeetingHost } from '../../../lib/meetingStorage.js';
-import { createBatchedMediaConvertJobs } from '../../../lib/mediaconvert-batch.js';
-import { createStabilityChecker, S3StabilityError } from '../../../lib/recording/s3StabilityChecker.js';
-import { getConfig } from '../../../lib/recording/config.js';
 
-// Create AWS clients with credentials
 const getAWSConfig = () => {
   const config = {
     region: process.env.CHIME_REGION || 'us-east-1'
@@ -30,7 +25,7 @@ const getAWSConfig = () => {
   return config;
 };
 
-const getS3Client = () => new S3Client(getAWSConfig());
+const getLambdaClient = () => new LambdaClient(getAWSConfig());
 
 const getMediaConvertClient = () => {
   const config = getAWSConfig();
@@ -86,64 +81,83 @@ export async function POST(req) {
       );
     }
 
-    const bucket = recording.s3Bucket;
-    const inputPrefix = `${recording.s3Prefix}/composited-video/`;
-    const outputPrefix = `${recording.s3Prefix}/final-video/`;
-
-    // Get S3 client with credentials
-    const s3Client = getS3Client();
-
-    // List all MP4 clips
-    const listCommand = new ListObjectsV2Command({
-      Bucket: bucket,
-      Prefix: inputPrefix
-    });
-
-    const listResponse = await s3Client.send(listCommand);
-    
-    if (!listResponse.Contents || listResponse.Contents.length === 0) {
-      return Response.json(
-        { error: "No video clips found to process" }, 
-        { status: 404 }
-      );
+    // Check if already processing
+    if (recording.processingStatus === "PROCESSING" || recording.processingStatus === "INITIALIZING") {
+      return Response.json({
+        success: true,
+        status: "PROCESSING",
+        message: "Processing already in progress."
+      });
     }
 
-    const clips = listResponse.Contents
-      .filter(obj => obj.Key.endsWith('.mp4'))
-      .sort((a, b) => a.Key.localeCompare(b.Key));
-    
-    if (clips.length === 0) {
+    // Update status to processing
+    await updateMeetingHost(meetingId, {
+      ...meetingData.host,
+      recording: {
+        ...recording,
+        processingStatus: "PROCESSING",
+        processingStartedAt: new Date().toISOString()
+      }
+    });
+
+    // Prepare Lambda payload
+    const payload = {
+      meetingId,
+      userEmail: session.user.email,
+      s3Bucket: recording.s3Bucket,
+      s3Prefix: recording.s3Prefix,
+      recordingInfo: {
+        startedAt: recording.startedAt,
+        stoppedAt: recording.stoppedAt
+      }
+    };
+
+    const lambdaFunctionName = process.env.RECORDING_PROCESSOR_LAMBDA_NAME || 'recording-processor';
+
+    console.info(`[ProcessAPI] Invoking Lambda function: ${lambdaFunctionName} for meeting ${meetingId}`);
+
+    try {
+      const lambdaClient = getLambdaClient();
+      
+      const command = new InvokeCommand({
+        FunctionName: lambdaFunctionName,
+        InvocationType: 'Event', // Async invocation (fire and forget)
+        Payload: JSON.stringify(payload)
+      });
+
+      await lambdaClient.send(command);
+
+      console.info(`[ProcessAPI] Lambda invoked successfully for meeting ${meetingId}`);
+
+      return Response.json({
+        success: true,
+        status: "PROCESSING",
+        message: "Processing started. Video will be ready in sometime."
+      });
+
+    } catch (lambdaError) {
+      console.error(`[ProcessAPI] Failed to invoke Lambda for meeting ${meetingId}:`, lambdaError);
+      
+      // Revert processing status
+      await updateMeetingHost(meetingId, {
+        ...meetingData.host,
+        recording: {
+          ...recording,
+          processingStatus: "ERROR",
+          processingError: lambdaError.message
+        }
+      });
+
       return Response.json(
-        { error: "No MP4 clips found" }, 
-        { status: 404 }
+        { error: "Failed to start processing. Please try again." }, 
+        { status: 500 }
       );
     }
-
-    const endpoint = process.env.MEDIACONVERT_ENDPOINT;
-    
-    // Get MediaConvert client with credentials
-    const mediaConvertClient = getMediaConvertClient();
-
-    const result = await createBatchedMediaConvertJobs(meetingId, session.user.email);
-
-    return Response.json({
-      success: true,
-      jobId: result.jobId,
-      status: "SUBMITTED",
-      clipsCount: result.clipsCount,
-      outputPath: result.outputKey,
-      processingMode: result.processingMode,
-      batchCount: result.batchCount,
-      clips: result.clips || [],
-      message: result.processingMode === 'BATCHED' 
-        ? `Processing ${result.clipsCount} clips in ${result.batchCount} batches. This may take several minutes.`
-        : "MediaConvert job submitted. Processing will complete in a few minutes."
-    });
 
   } catch (error) {
-    console.error("Failed to create MediaConvert job:", error);
+    console.error("Failed to trigger processing:", error);
     return Response.json(
-      { error: error?.message || "Failed to create MediaConvert job" }, 
+      { error: error?.message || "Failed to trigger processing" }, 
       { status: 500 }
     );
   }
@@ -188,158 +202,29 @@ export async function GET(req) {
       );
     }
 
+    // If no job ID yet, return processing status
     if (!recording.mediaConvertJobId) {
-      // Check if processing is already in progress (lock to prevent duplicate jobs)
-      if (recording.processingStatus === "INITIALIZING" || recording.processingStatus === "PROCESSING") {
-        console.info(`[ProcessAPI] Processing already in progress for meeting ${meetingId}, status: ${recording.processingStatus}`);
-        return Response.json({
-          success: true,
-          status: "INITIALIZING",
-          progress: 0,
-          message: "Processing is being initialized...",
-          clipsFound: recording.clipsCount || 0
-        });
-      }
-
-      // No job has been created yet. Check if clips are ready and create job
-      try {
-        // Set lock to prevent duplicate processing
-        await updateMeetingHost(meetingId, {
-          ...meetingData.host,
-          recording: {
-            ...recording,
-            processingStatus: "INITIALIZING",
-            processingStartedAt: new Date().toISOString()
-          }
-        });
-
-        const s3Client = getS3Client();
-        const config = getConfig();
-        const bucket = recording.s3Bucket;
-        const basePrefix = recording.s3Prefix.replace(/\/+$/g, '');
-        const inputPrefix = basePrefix.endsWith('/composited-video')
-          ? `${basePrefix}/`
-          : `${basePrefix}/composited-video/`;
-        
-        console.info(`[ProcessAPI] Checking clips stability for meeting ${meetingId}, prefix: ${inputPrefix}`);
-        
-        // Use stability checker to ensure all clips are ready
-        const stabilityChecker = createStabilityChecker({ s3Client, config });
-        
-        let stabilityResult;
-        try {
-          stabilityResult = await stabilityChecker.waitForStability(bucket, inputPrefix);
-          console.info(`[ProcessAPI] Clips stabilized: ${stabilityResult.clips.length} clips in ${stabilityResult.metrics.duration}ms`);
-        } catch (error) {
-          if (error instanceof S3StabilityError) {
-            // Clips not stable yet, clear lock and return waiting status
-            await updateMeetingHost(meetingId, {
-              ...meetingData.host,
-              recording: {
-                ...recording,
-                processingStatus: null,
-                processingStartedAt: null
-              }
-            });
-            
-            console.info(`[ProcessAPI] Clips not stable yet: ${error.message}`, error.details);
-            return Response.json({
-              success: true,
-              status: "WAITING_FOR_CLIPS",
-              progress: 0,
-              message: "Waiting for video clips to be saved to S3...",
-              clipsFound: error.details.clipCount || 0,
-              details: {
-                elapsed: error.details.elapsed,
-                iterations: error.details.iterations
-              }
-            });
-          }
-          
-          // Clear lock on unexpected error
-          await updateMeetingHost(meetingId, {
-            ...meetingData.host,
-            recording: {
-              ...recording,
-              processingStatus: null,
-              processingStartedAt: null
-            }
-          });
-          throw error;
-        }
-        
-        const clips = stabilityResult.clips;
-        
-        if (clips.length === 0) {
-          // Clear lock - no clips found yet
-          await updateMeetingHost(meetingId, {
-            ...meetingData.host,
-            recording: {
-              ...recording,
-              processingStatus: null,
-              processingStartedAt: null
-            }
-          });
-          
-          return Response.json({
-            success: true,
-            status: "WAITING_FOR_CLIPS",
-            progress: 0,
-            message: "Waiting for video clips to be saved to S3...",
-            clipsFound: 0
-          });
-        }
-        
-        // Clips are stable and ready, start processing
-        console.info(`[ProcessAPI] Starting processing for meeting ${meetingId}: ${clips.length} clips found and stable`);
-        const result = await createBatchedMediaConvertJobs(meetingId, session.user.email);
-        
-        return Response.json({
-          success: true,
-          jobId: result.jobId,
-          status: "SUBMITTED",
-          progress: 0,
-          outputPath: result.outputKey,
-          processingMode: result.processingMode,
-          batchCount: result.batchCount,
-          clipsCount: result.clipsCount,
-          clips: result.clips || [],
-          stabilityMetrics: stabilityResult.metrics,
-          message: result.processingMode === 'BATCHED'
-            ? `Processing ${result.clipsCount} clips in ${result.batchCount} batches.`
-            : "MediaConvert job submitted. Processing will complete in a few minutes."
-        });
-      } catch (err) {
-        console.error("[ProcessAPI] Failed to start processing:", err);
-        
-        // Clear lock on error
-        try {
-          await updateMeetingHost(meetingId, {
-            ...meetingData.host,
-            recording: {
-              ...recording,
-              processingStatus: "ERROR",
-              processingError: err.message
-            }
-          });
-        } catch (updateErr) {
-          console.error("[ProcessAPI] Failed to update error status:", updateErr);
-        }
-        
-        return Response.json({
-          success: false,
-          status: "ERROR",
-          error: err.message,
-          message: "Failed to start processing. Please try again."
-        }, { status: 500 });
-      }
+      return Response.json({
+        success: true,
+        status: recording.processingStatus || "NOT_STARTED",
+        progress: 0,
+        message: recording.processingStatus === "PROCESSING" 
+          ? "Processing in progress..."
+          : recording.processingStatus === "ERROR"
+          ? `Processing failed: ${recording.processingError || 'Unknown error'}`
+          : "Processing not started",
+        error: recording.processingError
+      });
     }
 
+    // Get MediaConvert job status
     const jobId = recording.mediaConvertJobId;
     const endpoint = process.env.MEDIACONVERT_ENDPOINT;
 
-    // Get MediaConvert client with credentials
-    const mediaConvertClient = getMediaConvertClient();
+    const mediaConvertClient = new MediaConvertClient({
+      ...getAWSConfig(),
+      endpoint: endpoint
+    });
 
     const getJobCommand = new GetJobCommand({ Id: jobId });
     const jobResponse = await mediaConvertClient.send(getJobCommand);
@@ -347,12 +232,14 @@ export async function GET(req) {
     const status = jobResponse.Job.Status;
     const progress = jobResponse.Job.JobPercentComplete || 0;
 
+    // Update status if completed
     if (status === "COMPLETE" || status === "ERROR" || status === "CANCELED") {
       await updateMeetingHost(meetingId, {
         ...meetingData.host,
         recording: {
           ...meetingData.host.recording,
           mediaConvertStatus: status,
+          processingStatus: status === "COMPLETE" ? "COMPLETED" : "ERROR",
           processCompletedAt: new Date().toISOString()
         }
       });
@@ -367,9 +254,9 @@ export async function GET(req) {
     });
 
   } catch (error) {
-    console.error("Failed to get MediaConvert job status:", error);
+    console.error("Failed to get processing status:", error);
     return Response.json(
-      { error: error?.message || "Failed to get job status" }, 
+      { error: error?.message || "Failed to get processing status" }, 
       { status: 500 }
     );
   }

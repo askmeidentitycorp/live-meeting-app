@@ -53,7 +53,6 @@ export async function POST(req) {
       );
     }
 
-    // Verify user is the host
     if (meetingData.host?.email !== session.user.email) {
       return Response.json(
         { error: "Only the meeting host can stop recording" }, 
@@ -77,7 +76,6 @@ export async function POST(req) {
       );
     }
 
-    // Get client with credentials
     const mediaPipelinesClient = getMediaPipelinesClient();
 
     const command = new DeleteMediaCapturePipelineCommand({
@@ -116,7 +114,7 @@ export async function POST(req) {
         s3Prefix: recordingInfo.s3Prefix,
         status: recordingInfo.status
       },
-      message: "Recording stopped successfully. Processing will begin shortly."
+      message: "Recording stopped successfully."
     });
 
   } catch (error) {

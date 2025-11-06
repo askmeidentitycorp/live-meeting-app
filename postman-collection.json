@@ -1,0 +1,468 @@
+{
+  "info": {
+    "name": "Live Meeting App API",
+    "description": "Complete API collection for the Live Meeting App built with Next.js and Amazon Chime SDK.\n\n## Authentication Setup:\n\nThis API uses NextAuth.js with cookie-based sessions. To authenticate:\n\n### Method 1: Using Browser (Recommended)\n1. Open your browser and go to: http://localhost:3000/auth/signin\n2. Sign in with Google or GitHub\n3. Open Browser DevTools (F12) → Application/Storage → Cookies\n4. Find cookies: `next-auth.session-token` (or `__Secure-next-auth.session-token` for HTTPS)\n5. Copy the cookie value\n6. In Postman, go to Cookies (top right)\n7. Add a new cookie for localhost:3000:\n   - Name: `next-auth.session-token` (or `__Secure-next-auth.session-token` for HTTPS)\n   - Value: [paste the copied value]\n   - Domain: localhost\n   - Path: /\n\n### Method 2: Using Postman Interceptor\n1. Install Postman Interceptor browser extension\n2. Enable it in Postman (bottom right)\n3. Sign in to your app in the browser\n4. Postman will automatically sync cookies\n\n### Testing Authentication:\nUse the 'NextAuth Session' endpoint to verify your authentication is working.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "live-meeting-app"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "meeting_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "scheduled_meeting_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "pipeline_arn",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Meetings",
+      "item": [
+        {
+          "name": "Create Meeting",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('meeting_id', response.Meeting.MeetingId);",
+                  "    console.log('Meeting ID saved:', response.Meeting.MeetingId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"meetingTitle\": \"Team Standup Meeting\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/meeting",
+              "host": ["{{base_url}}"],
+              "path": ["api", "meeting"]
+            },
+            "description": "Creates a new meeting. Requires authentication. Returns Meeting and Attendee objects."
+          },
+          "response": []
+        },
+        {
+          "name": "Join Meeting",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"meetingId\": \"{{meeting_id}}\",\n  \"attendeeName\": \"John Doe\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/join-meeting",
+              "host": ["{{base_url}}"],
+              "path": ["api", "join-meeting"]
+            },
+            "description": "Joins an existing meeting. Creates an attendee for the specified meeting. Authentication optional (guest access supported)."
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Meetings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/meetings?filterByUser=true",
+              "host": ["{{base_url}}"],
+              "path": ["api", "meetings"],
+              "query": [
+                {
+                  "key": "filterByUser",
+                  "value": "true",
+                  "description": "Filter meetings by authenticated user (optional)"
+                }
+              ]
+            },
+            "description": "Retrieves all meetings. Use filterByUser=true to get only meetings created by the authenticated user."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Meeting by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/meetings?meetingId={{meeting_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "meetings"],
+              "query": [
+                {
+                  "key": "meetingId",
+                  "value": "{{meeting_id}}"
+                }
+              ]
+            },
+            "description": "Retrieves details of a specific meeting by ID."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Meeting",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"meetingId\": \"{{meeting_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/meetings",
+              "host": ["{{base_url}}"],
+              "path": ["api", "meetings"]
+            },
+            "description": "Deletes a meeting. Only the host can delete their meeting. Requires authentication."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints for managing meetings - create, join, list, and delete meetings."
+    },
+    {
+      "name": "Scheduled Meetings",
+      "item": [
+        {
+          "name": "Create Scheduled Meeting",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('scheduled_meeting_id', response.meetingId);",
+                  "    console.log('Scheduled Meeting ID saved:', response.meetingId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Weekly Team Standup\",\n  \"description\": \"Discuss project progress and blockers\",\n  \"scheduledDateTime\": \"2025-11-10T10:00:00Z\",\n  \"duration\": 60\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/scheduled-meeting",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scheduled-meeting"]
+            },
+            "description": "Creates a new scheduled meeting for a future date/time. Requires authentication. The scheduledDateTime must be in the future."
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Scheduled Meetings",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scheduled-meeting",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scheduled-meeting"]
+            },
+            "description": "Retrieves all scheduled meetings for the authenticated user. Only shows meetings with status 'scheduled' or 'started'. Requires authentication."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Scheduled Meeting Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scheduled-meeting/{{scheduled_meeting_id}}/info",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scheduled-meeting", "{{scheduled_meeting_id}}", "info"]
+            },
+            "description": "Retrieves public information about a scheduled meeting. Does not require authentication. Returns meeting title, description, host name, scheduled time, and status. Automatically clears expired Chime meeting references."
+          },
+          "response": []
+        },
+        {
+          "name": "Start Scheduled Meeting",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('meeting_id', response.meetingId);",
+                  "    console.log('Meeting started with ID:', response.meetingId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"scheduledMeetingId\": \"{{scheduled_meeting_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/scheduled-meeting/start",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scheduled-meeting", "start"]
+            },
+            "description": "Starts a scheduled meeting by creating an actual Chime meeting instance. Only the host can start their scheduled meeting. If meeting was already started and still active, returns existing meeting details. If previous meeting expired, creates a new one. Requires authentication."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete Scheduled Meeting",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/scheduled-meeting/{{scheduled_meeting_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "scheduled-meeting", "{{scheduled_meeting_id}}"]
+            },
+            "description": "Deletes a scheduled meeting. Only the host can delete their scheduled meeting. Cannot delete meetings that have already started. Requires authentication."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints for managing scheduled meetings - create, list, get info, start, and delete scheduled meetings."
+    },
+    {
+      "name": "Recording",
+      "item": [
+        {
+          "name": "Start Recording",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    pm.collectionVariables.set('pipeline_arn', response.mediaPipeline.MediaPipelineArn);",
+                  "    console.log('Pipeline ARN saved:', response.mediaPipeline.MediaPipelineArn);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"meetingId\": \"{{meeting_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/recording/start",
+              "host": ["{{base_url}}"],
+              "path": ["api", "recording", "start"]
+            },
+            "description": "Starts recording for a meeting. Only the host can start recording. Requires authentication."
+          },
+          "response": []
+        },
+        {
+          "name": "Stop Recording",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"meetingId\": \"{{meeting_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/recording/stop",
+              "host": ["{{base_url}}"],
+              "path": ["api", "recording", "stop"]
+            },
+            "description": "Stops recording for a meeting. Only the host can stop recording. Requires authentication."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Recording Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/recording/status?meetingId={{meeting_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "recording", "status"],
+              "query": [
+                {
+                  "key": "meetingId",
+                  "value": "{{meeting_id}}"
+                }
+              ]
+            },
+            "description": "Gets the current recording status for a meeting. Requires authentication."
+          },
+          "response": []
+        },
+        {
+          "name": "Process Recording",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"meetingId\": \"{{meeting_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/recording/process",
+              "host": ["{{base_url}}"],
+              "path": ["api", "recording", "process"]
+            },
+            "description": "Processes recorded meeting files using AWS MediaConvert. Converts raw recordings to MP4 format. Only the host can process recordings. Requires authentication."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Processing Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/recording/process?meetingId={{meeting_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["api", "recording", "process"],
+              "query": [
+                {
+                  "key": "meetingId",
+                  "value": "{{meeting_id}}"
+                }
+              ]
+            },
+            "description": "Gets the processing status of recorded files. Returns job status and output file URLs. Requires authentication."
+          },
+          "response": []
+        }
+      ],
+      "description": "Endpoints for managing meeting recordings - start, stop, check status, and process recordings."
+    },
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "NextAuth Session",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/auth/session",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "session"]
+            },
+            "description": "Gets the current authentication session. Returns user information if authenticated."
+          },
+          "response": []
+        },
+        {
+          "name": "NextAuth Providers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/auth/providers",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "providers"]
+            },
+            "description": "Lists available authentication providers (Google, GitHub, etc.)."
+          },
+          "response": []
+        },
+        {
+          "name": "NextAuth CSRF Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/auth/csrf",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "csrf"]
+            },
+            "description": "Gets the CSRF token for authentication requests."
+          },
+          "response": []
+        }
+      ],
+      "description": "NextAuth.js authentication endpoints. The app uses OAuth providers (Google, GitHub) for authentication."
+    }
+  ]
+}
