@@ -96,7 +96,7 @@ export async function POST(req) {
       }
     };
 
-    const lambdaFunctionName = process.env.RECORDING_PROCESSOR_LAMBDA_NAME || 'recording-processor';
+    const lambdaFunctionName = process.env.RECORDING_PROCESSOR_LAMBDA_NAME;
 
     console.info(`[ProcessAPI] Invoking Lambda function: ${lambdaFunctionName} for meeting ${meetingId}`);
 
@@ -105,7 +105,7 @@ export async function POST(req) {
       
       const command = new InvokeCommand({
         FunctionName: lambdaFunctionName,
-        InvocationType: 'Event', // Async invocation (fire and forget)
+        InvocationType: 'Event',
         Payload: JSON.stringify(payload)
       });
 

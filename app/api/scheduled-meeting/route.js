@@ -3,20 +3,62 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "../auth/[...nextauth]/route";
 import { connectToDb } from "../../lib/meetingStorage";
 
-// POST - Create a scheduled meeting
 export async function POST(req) {
   try {
     console.log("[ScheduledMeeting] POST request received");
     
-    const session = await getServerSession(authOptions);
-    console.log("[ScheduledMeeting] Session:", session?.user?.email);
+    const apiKey = req.headers.get('x-api-key');
+    const hostUser = req.headers.get('x-host-user');
+    const internalApiKey = process.env.INTERNAL_SCHEDULING_API_KEY;
     
-    if (!session?.user?.email) {
-      console.log("[ScheduledMeeting] No session found");
-      return NextResponse.json(
-        { error: "Unauthorized - session required" },
-        { status: 401 }
-      );
+    let hostEmail, hostName;
+    let isApiKeyAuth = false;
+    
+    if (apiKey) {
+      console.log("[ScheduledMeeting] API key authentication detected");
+      
+      if (!internalApiKey) {
+        console.error("[ScheduledMeeting] INTERNAL_SCHEDULING_API_KEY not configured");
+        return NextResponse.json(
+          { error: "Server configuration error" },
+          { status: 500 }
+        );
+      }
+      
+      if (apiKey !== internalApiKey) {
+        console.log("[ScheduledMeeting] Invalid API key provided");
+        return NextResponse.json(
+          { error: "Invalid API key" },
+          { status: 401 }
+        );
+      }
+      
+      if (!hostUser) {
+        console.log("[ScheduledMeeting] Missing x-host-user header");
+        return NextResponse.json(
+          { error: "Missing x-host-user header" },
+          { status: 400 }
+        );
+      }
+      
+      hostEmail = hostUser;
+      hostName = hostUser.split('@')[0]; 
+      isApiKeyAuth = true;
+      console.log(`[ScheduledMeeting] API key auth successful for user: ${hostEmail}`);
+    } else {
+      const session = await getServerSession(authOptions);
+      console.log("[ScheduledMeeting] Session:", session?.user?.email);
+      
+      if (!session?.user?.email) {
+        console.log("[ScheduledMeeting] No session found");
+        return NextResponse.json(
+          { error: "Unauthorized - session required" },
+          { status: 401 }
+        );
+      }
+      
+      hostEmail = session.user.email;
+      hostName = session.user.name || session.user.email;
     }
 
     const body = await req.json();
@@ -24,7 +66,6 @@ export async function POST(req) {
     
     const { title, description, scheduledDateTime, duration } = body;
 
-    // Validation
     if (!title || !scheduledDateTime || !duration) {
       console.log("[ScheduledMeeting] Missing required fields");
       return NextResponse.json(
@@ -45,21 +86,20 @@ export async function POST(req) {
       );
     }
 
-    // Connect to MongoDB
     console.log("[ScheduledMeeting] Connecting to MongoDB...");
     const db = await connectToDb();
     const collection = db.collection("scheduled_meetings");
     console.log("[ScheduledMeeting] MongoDB connected");
 
-    // Create scheduled meeting document
     const scheduledMeeting = {
       title,
       description: description || "",
       scheduledDateTime: scheduledDate,
       duration: parseInt(duration),
       status: "scheduled",
-      hostEmail: session.user.email,
-      hostName: session.user.name || session.user.email,
+      hostEmail: hostEmail,
+      hostName: hostName,
+      createdVia: isApiKeyAuth ? "api" : "web",
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -68,10 +108,9 @@ export async function POST(req) {
     const result = await collection.insertOne(scheduledMeeting);
     console.log("[ScheduledMeeting] Insert result:", result.insertedId);
 
-    // Add small delay for write propagation in serverless
     await new Promise(resolve => setTimeout(resolve, 100));
 
-    console.log(`[ScheduledMeeting] Created scheduled meeting: ${result.insertedId} by ${session.user.email}`);
+    console.log(`[ScheduledMeeting] Created scheduled meeting: ${result.insertedId} by ${hostEmail} (via ${isApiKeyAuth ? 'API' : 'web'})`);
 
     return NextResponse.json({
       success: true,
