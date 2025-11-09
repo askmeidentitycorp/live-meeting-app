@@ -22,8 +22,8 @@ fi
 FUNCTION_NAME="${FUNCTION_NAME:-recording-processor}"
 REGION="${AWS_REGION:-${CHIME_REGION:-us-east-1}}"
 LAMBDA_ROLE_ARN="${LAMBDA_ROLE_ARN}"
-# Use MEDIACONVERT_ROLE_ARN or fall back to MEDIACONVERT_ROLE
-MEDIACONVERT_ROLE_ARN="${MEDIACONVERT_ROLE_ARN:-${MEDIACONVERT_ROLE}}"
+FFMPEG_API_URL="${FFMPEG_API_URL:-https://hostedservices.arythmatic.cloud/start-hls-process}"
+FFMPEG_API_KEY="${FFMPEG_API_KEY}"
 
 echo "========================================="
 echo "Recording Processor Lambda Deployment"
@@ -46,13 +46,8 @@ if [ -z "$MONGODB_URI" ]; then
     exit 1
 fi
 
-if [ -z "$MEDIACONVERT_ENDPOINT" ]; then
-    echo "❌ Error: MEDIACONVERT_ENDPOINT environment variable not set"
-    exit 1
-fi
-
-if [ -z "$MEDIACONVERT_ROLE_ARN" ]; then
-    echo "❌ Error: MEDIACONVERT_ROLE_ARN environment variable not set"
+if [ -z "$FFMPEG_API_KEY" ]; then
+    echo "❌ Error: FFMPEG_API_KEY environment variable not set"
     exit 1
 fi
 
@@ -78,9 +73,9 @@ if aws lambda get-function --function-name $FUNCTION_NAME --region $REGION > /de
         --memory-size 512 \
         --environment "Variables={
             MONGODB_URI=$MONGODB_URI,
-            MONGODB_DB=${MONGODB_DB:-live-meeting-app},
-            MEDIACONVERT_ENDPOINT=$MEDIACONVERT_ENDPOINT,
-            MEDIACONVERT_ROLE_ARN=$MEDIACONVERT_ROLE_ARN
+            MONGODB_DB=${MONGODB_DB:-live-meeting},
+            FFMPEG_API_URL=$FFMPEG_API_URL,
+            FFMPEG_API_KEY=$FFMPEG_API_KEY
         }" \
         --region $REGION
 
@@ -96,9 +91,9 @@ else
         --zip-file fileb://function.zip \
         --environment "Variables={
             MONGODB_URI=$MONGODB_URI,
-            MONGODB_DB=${MONGODB_DB:-live-meeting-app},
-            MEDIACONVERT_ENDPOINT=$MEDIACONVERT_ENDPOINT,
-            MEDIACONVERT_ROLE_ARN=$MEDIACONVERT_ROLE_ARN
+            MONGODB_DB=${MONGODB_DB:-live-meeting},
+            FFMPEG_API_URL=$FFMPEG_API_URL,
+            FFMPEG_API_KEY=$FFMPEG_API_KEY
         }" \
         --region $REGION
 fi
