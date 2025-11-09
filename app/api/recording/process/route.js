@@ -98,6 +98,10 @@ export async function POST(req) {
 
     const lambdaFunctionName = process.env.RECORDING_PROCESSOR_LAMBDA_NAME;
 
+    if (!lambdaFunctionName) {
+      throw new Error('RECORDING_PROCESSOR_LAMBDA_NAME environment variable is not set');
+    }
+
     console.info(`[ProcessAPI] Invoking Lambda function: ${lambdaFunctionName} for meeting ${meetingId}`);
 
     try {
@@ -122,7 +126,6 @@ export async function POST(req) {
     } catch (lambdaError) {
       console.error(`[ProcessAPI] Failed to invoke Lambda for meeting ${meetingId}:`, lambdaError);
       
-      // Revert processing status
       await updateMeetingHost(meetingId, {
         ...meetingData.host,
         recording: {
