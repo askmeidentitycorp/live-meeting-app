@@ -1,4 +1,5 @@
 const { S3Client, ListObjectsV2Command } = require("@aws-sdk/client-s3");
+const { LambdaClient, UpdateFunctionConfigurationCommand } = require("@aws-sdk/client-lambda");
 const { default: axios } = require("axios");
 const { MongoClient } = require("mongodb");
 
@@ -7,11 +8,14 @@ const MONGODB_URI = process.env.MONGODB_URI;
 const MONGODB_DB = process.env.MONGODB_DB;
 const AWS_REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
 const FFMPEG_API_URL = process.env.FFMPEG_API_URL || 'https://hostedservices.arythmatic.cloud/start-hls-process';
-const FFMPEG_API_KEY = process.env.FFMPEG_API_KEY;
+const FFMPEG_API_BASE_URL = 'https://hostedservices.arythmatic.cloud';
+const LAMBDA_FUNCTION_NAME = process.env.AWS_LAMBDA_FUNCTION_NAME;
+let FFMPEG_API_KEY = process.env.FFMPEG_API_KEY;
 
 // Clients
 let mongoClient = null;
 let s3Client = null;
+let lambdaClient = null;
 
 // Initialize AWS clients
 function getS3Client() {
@@ -19,6 +23,13 @@ function getS3Client() {
     s3Client = new S3Client({ region: AWS_REGION });
   }
   return s3Client;
+}
+
+function getLambdaClient() {
+  if (!lambdaClient) {
+    lambdaClient = new LambdaClient({ region: AWS_REGION });
+  }
+  return lambdaClient;
 }
 
 // MongoDB connection
@@ -97,8 +108,77 @@ async function waitForStableClips(bucket, prefix, maxWaitTime = 120000, checkInt
   throw new Error(`Timeout waiting for clips to stabilize after ${maxWaitTime}ms`);
 }
 
+// Generate new API key from FFmpeg service
+async function generateNewApiKey() {
+  console.log('[APIKey] Generating new API key...');
+  
+  try {
+    const response = await axios.post(`${FFMPEG_API_BASE_URL}/generate-api-key`, {
+      username: 'support@arythmatic.cloud',
+      password: 'Arythmatic2024!'
+    }, {
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const { apiKey } = response.data;
+    
+    if (!apiKey) {
+      throw new Error('API key not returned from generation endpoint');
+    }
+
+    console.log('[APIKey] New API key generated successfully');
+    return apiKey;
+    
+  } catch (error) {
+    console.error('[APIKey] Failed to generate new API key:', error.message);
+    throw new Error(`API key generation failed: ${error.message}`);
+  }
+}
+
+// Update Lambda environment variable with new API key
+async function updateLambdaApiKey(newApiKey) {
+  console.log('[APIKey] Updating Lambda environment variable...');
+  
+  try {
+    const lambda = getLambdaClient();
+    
+    const command = new UpdateFunctionConfigurationCommand({
+      FunctionName: LAMBDA_FUNCTION_NAME,
+      Environment: {
+        Variables: {
+          ...process.env,
+          FFMPEG_API_KEY: newApiKey
+        }
+      }
+    });
+
+    await lambda.send(command);
+    
+    // Update the in-memory variable
+    FFMPEG_API_KEY = newApiKey;
+    
+    console.log('[APIKey] Lambda environment variable updated successfully');
+    
+  } catch (error) {
+    console.error('[APIKey] Failed to update Lambda environment:', error.message);
+    throw new Error(`Failed to update Lambda API key: ${error.message}`);
+  }
+}
+
+// Regenerate API key and retry
+async function regenerateApiKeyAndRetry() {
+  console.log('[APIKey] API key missing or invalid, regenerating...');
+  
+  const newApiKey = await generateNewApiKey();
+  await updateLambdaApiKey(newApiKey);
+  
+  return newApiKey;
+}
+
 // Call FFmpeg processing API
-async function callProcessingAPI(bucketName, allKeys, outputKey, format = 'hls') {
+async function callProcessingAPI(bucketName, allKeys, outputKey, format = 'hls', retryCount = 0) {
   console.log(`[FFmpeg] Processing ${allKeys.length} clips to s3://${bucketName}/${outputKey}`);
 
   const payload = {
@@ -127,7 +207,25 @@ async function callProcessingAPI(bucketName, allKeys, outputKey, format = 'hls')
     
     return result;
   } catch (error) {
-    console.error('[FFmpeg] API call failed:', error);
+    console.error('[FFmpeg] API call failed:', error.message);
+    
+    // Check if it's a 401 error (missing/invalid API key) and we haven't retried yet
+    if ((error.response?.status === 401 || error.message.includes('API key missing')) && retryCount === 0) {
+      console.log('[FFmpeg] Attempting to regenerate API key and retry...');
+      
+      try {
+        await regenerateApiKeyAndRetry();
+        
+        // Retry the API call with the new key
+        console.log('[FFmpeg] Retrying with new API key...');
+        return await callProcessingAPI(bucketName, allKeys, outputKey, format, retryCount + 1);
+        
+      } catch (regenerateError) {
+        console.error('[FFmpeg] Failed to regenerate API key:', regenerateError.message);
+        throw new Error(`API key regeneration failed: ${regenerateError.message}`);
+      }
+    }
+    
     throw error;
   }
 }
