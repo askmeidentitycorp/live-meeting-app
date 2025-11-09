@@ -97,6 +97,8 @@ export async function POST(req) {
     };
 
     const lambdaFunctionName = process.env.RECORDING_PROCESSOR_LAMBDA_NAME;
+      console.log(`[ProcessAPI] Lambda function name: ${lambdaFunctionName}`);
+    
 
     if (!lambdaFunctionName) {
       throw new Error('RECORDING_PROCESSOR_LAMBDA_NAME environment variable is not set');
