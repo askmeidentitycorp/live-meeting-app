@@ -7,8 +7,8 @@ const { MongoClient } = require("mongodb");
 const MONGODB_URI = process.env.MONGODB_URI;
 const MONGODB_DB = process.env.MONGODB_DB;
 const AWS_REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION;
-const FFMPEG_API_URL = process.env.FFMPEG_API_URL || 'https://hostedservices.arythmatic.cloud/start-hls-process';
-const FFMPEG_API_BASE_URL = 'https://hostedservices.arythmatic.cloud';
+const FFMPEG_API_URL = process.env.FFMPEG_API_URL || 'https://hostedservices.arythmatic.cloud/api/videos/start-hls-process';
+const FFMPEG_API_BASE_URL = 'https://hostedservices.arythmatic.cloud/auth';
 const LAMBDA_FUNCTION_NAME = process.env.AWS_LAMBDA_FUNCTION_NAME;
 let FFMPEG_API_KEY = process.env.FFMPEG_API_KEY;
 
@@ -114,8 +114,8 @@ async function generateNewApiKey() {
   
   try {
     const response = await axios.post(`${FFMPEG_API_BASE_URL}/generate-api-key`, {
-      username: 'support@arythmatic.cloud',
-      password: 'Arythmatic2024!'
+      username: 'videoprocessor@arythmatic.cloud',
+      password: '[}{E}li40^DL[F#H'
     }, {
       headers: {
         'Content-Type': 'application/json'
@@ -137,7 +137,6 @@ async function generateNewApiKey() {
   }
 }
 
-// Update Lambda environment variable with new API key
 async function updateLambdaApiKey(newApiKey) {
   console.log('[APIKey] Updating Lambda environment variable...');
   
@@ -197,7 +196,7 @@ async function callProcessingAPI(bucketName, allKeys, outputKey, format = 'hls',
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
+      const errorText = await response.data();
       console.error('[FFmpeg] Error response:', errorText);
       throw new Error(`FFmpeg API error (${response.status}): ${errorText}`);
     }
@@ -230,13 +229,13 @@ async function callProcessingAPI(bucketName, allKeys, outputKey, format = 'hls',
   }
 }
 
-async function createProcessingJob(meetingId, bucket, inputClips, outputPrefix) {
+async function createProcessingJob( bucket, inputClips, outputPrefix) {
   // Prepare all clip keys
   const allKeys = inputClips.map(clip => clip.Key);
   
   // Output configuration
-  const outputKey = `${outputPrefix}/final-ffmpeg-video`;
-  const format = 'hls';
+  const outputKey = outputPrefix;
+  const format = 'hls'; 
 
   // Call FFmpeg API
   const result = await callProcessingAPI(bucket, allKeys, outputKey, format);
