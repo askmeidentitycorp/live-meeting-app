@@ -1,10 +1,10 @@
-import { 
-  ChimeSDKMediaPipelinesClient, 
-  CreateMediaCapturePipelineCommand 
+import {
+  ChimeSDKMediaPipelinesClient,
+  CreateMediaCapturePipelineCommand
 } from "@aws-sdk/client-chime-sdk-media-pipelines";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../auth/[...nextauth]/route";
-import { getMeeting, updateMeetingHost } from '../../../lib/meetingStorage.js';
+import { connectToDb, getMeeting, updateMeetingHost } from '../../../lib/meetingStorage.js';
 
 // Create Chime Media Pipelines client with credentials
 const getMediaPipelinesClient = () => {
@@ -15,7 +15,7 @@ const getMediaPipelinesClient = () => {
   // Add credentials if provided (for Amplify deployment)
   const accessKeyId = process.env.CHIME_ACCESS_KEY_ID;
   const secretAccessKey = process.env.CHIME_SECRET_ACCESS_KEY;
-  
+
   if (accessKeyId && secretAccessKey) {
     config.credentials = {
       accessKeyId,
@@ -28,12 +28,11 @@ const getMediaPipelinesClient = () => {
 
 export async function POST(req) {
   try {
-    // Enforce authentication - only authenticated users can start recording
     const session = await getServerSession(authOptions);
-    
+
     if (!session || !session.user) {
       return Response.json(
-        { error: "Unauthorized. Please sign in to start recording." }, 
+        { error: "Unauthorized. Please sign in to start recording." },
         { status: 401 }
       );
     }
@@ -42,17 +41,17 @@ export async function POST(req) {
 
     if (!meetingId) {
       return Response.json(
-        { error: "Meeting ID is required" }, 
+        { error: "Meeting ID is required" },
         { status: 400 }
       );
     }
 
-  // Check if user is the host of this meeting
-  const meetingData = await getMeeting(meetingId);
-    
+    // Check if user is the host of this meeting
+    const meetingData = await getMeeting(meetingId);
+
     if (!meetingData) {
       return Response.json(
-        { error: "Meeting not found" }, 
+        { error: "Meeting not found" },
         { status: 404 }
       );
     }
@@ -60,7 +59,7 @@ export async function POST(req) {
     // Verify user is the host
     if (meetingData.host?.email !== session.user.email) {
       return Response.json(
-        { error: "Only the meeting host can start recording" }, 
+        { error: "Only the meeting host can start recording" },
         { status: 403 }
       );
     }
@@ -68,7 +67,7 @@ export async function POST(req) {
     // Check if recording is already in progress
     if (meetingData.recording?.isRecording) {
       return Response.json(
-        { error: "Recording is already in progress" }, 
+        { error: "Recording is already in progress" },
         { status: 400 }
       );
     }
@@ -76,16 +75,24 @@ export async function POST(req) {
     // Validate required environment variables
     if (!process.env.CHIME_RECORDING_BUCKET) {
       return Response.json(
-        { error: "S3 bucket not configured for recordings" }, 
+        { error: "S3 bucket not configured for recordings" },
         { status: 500 }
       );
     }
 
-    // Create S3 path for recording
+    const db = await connectToDb();
+    const scheduledCollection = db.collection("scheduled_meetings");
+    const scheduledMeeting = await scheduledCollection.findOne({
+      chimeMeetingId: meetingId,
+    });
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const s3Prefix = `recordings/${meetingId}/${timestamp}`;
+    let s3Prefix;
+    if (scheduledMeeting?._id) {
+      s3Prefix = `scheduled-meeting-recordings/${scheduledMeeting._id}/${timestamp}`;
+    } else {
+      s3Prefix = `instant-meeting-recordings/${meetingId}/${timestamp}`;
+    }
 
-    // Get client with credentials
     const mediaPipelinesClient = getMediaPipelinesClient();
 
     // Create media capture pipeline
@@ -150,7 +157,7 @@ export async function POST(req) {
   } catch (error) {
     console.error("Failed to start recording:", error);
     return Response.json(
-      { error: error?.message || "Failed to start recording" }, 
+      { error: error?.message || "Failed to start recording" },
       { status: 500 }
     );
   }

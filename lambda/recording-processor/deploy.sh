@@ -59,6 +59,8 @@ rm -f function.zip
 zip -r function.zip index.js node_modules/ package.json
 
 echo "☁️  Checking if function exists..."
+
+# Always update if the function exists, only create if it does not
 if aws lambda get-function --function-name $FUNCTION_NAME --region $REGION > /dev/null 2>&1; then
     echo "♻️  Updating existing Lambda function..."
     aws lambda update-function-code \
@@ -71,14 +73,8 @@ if aws lambda get-function --function-name $FUNCTION_NAME --region $REGION > /de
         --function-name $FUNCTION_NAME \
         --timeout 300 \
         --memory-size 512 \
-        --environment "Variables={
-            MONGODB_URI=$MONGODB_URI,
-            MONGODB_DB=${MONGODB_DB:-live-meeting},
-            FFMPEG_API_URL=$FFMPEG_API_URL,
-            FFMPEG_API_KEY=$FFMPEG_API_KEY
-        }" \
+        --environment "Variables={MONGODB_URI=$MONGODB_URI,MONGODB_DB=${MONGODB_DB:-live-meeting},FFMPEG_API_URL=$FFMPEG_API_URL,FFMPEG_API_KEY=$FFMPEG_API_KEY}" \
         --region $REGION
-
 else
     echo "🆕 Creating new Lambda function..."
     aws lambda create-function \
@@ -89,12 +85,7 @@ else
         --timeout 300 \
         --memory-size 512 \
         --zip-file fileb://function.zip \
-        --environment "Variables={
-            MONGODB_URI=$MONGODB_URI,
-            MONGODB_DB=${MONGODB_DB:-live-meeting},
-            FFMPEG_API_URL=$FFMPEG_API_URL,
-            FFMPEG_API_KEY=$FFMPEG_API_KEY
-        }" \
+        --environment "Variables={MONGODB_URI=$MONGODB_URI,MONGODB_DB=${MONGODB_DB:-live-meeting},FFMPEG_API_URL=$FFMPEG_API_URL,FFMPEG_API_KEY=$FFMPEG_API_KEY}" \
         --region $REGION
 fi
 

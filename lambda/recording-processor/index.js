@@ -87,7 +87,7 @@ async function waitForStableClips(bucket, prefix, maxWaitTime = 120000, checkInt
 
       if (currentCount === previousCount) {
         stableIterations++;
-        
+
         if (stableIterations >= requiredStableIterations) {
           console.log(`[S3Stability] ${clips.length} clips stabilized`);
           return clips;
@@ -111,7 +111,7 @@ async function waitForStableClips(bucket, prefix, maxWaitTime = 120000, checkInt
 // Generate new API key from FFmpeg service
 async function generateNewApiKey() {
   console.log('[APIKey] Generating new API key...');
-  
+
   try {
     const response = await axios.post(`${FFMPEG_API_BASE_URL}/generate-api-key`, {
       username: 'videoprocessor@arythmatic.cloud',
@@ -123,14 +123,14 @@ async function generateNewApiKey() {
     });
 
     const { apiKey } = response.data;
-    
+
     if (!apiKey) {
       throw new Error('API key not returned from generation endpoint');
     }
 
     console.log('[APIKey] New API key generated successfully');
     return apiKey;
-    
+
   } catch (error) {
     console.error('[APIKey] Failed to generate new API key:', error.message);
     throw new Error(`API key generation failed: ${error.message}`);
@@ -139,10 +139,10 @@ async function generateNewApiKey() {
 
 async function updateLambdaApiKey(newApiKey) {
   console.log('[APIKey] Updating Lambda environment variable...');
-  
+
   try {
     const lambda = getLambdaClient();
-    
+
     const command = new UpdateFunctionConfigurationCommand({
       FunctionName: LAMBDA_FUNCTION_NAME,
       Environment: {
@@ -154,12 +154,11 @@ async function updateLambdaApiKey(newApiKey) {
     });
 
     await lambda.send(command);
-    
-    // Update the in-memory variable
+
     FFMPEG_API_KEY = newApiKey;
-    
+
     console.log('[APIKey] Lambda environment variable updated successfully');
-    
+
   } catch (error) {
     console.error('[APIKey] Failed to update Lambda environment:', error.message);
     throw new Error(`Failed to update Lambda API key: ${error.message}`);
@@ -169,22 +168,25 @@ async function updateLambdaApiKey(newApiKey) {
 // Regenerate API key and retry
 async function regenerateApiKeyAndRetry() {
   console.log('[APIKey] API key missing or invalid, regenerating...');
-  
+
   const newApiKey = await generateNewApiKey();
   await updateLambdaApiKey(newApiKey);
-  
+
   return newApiKey;
 }
 
-// Call FFmpeg processing API
 async function callProcessingAPI(bucketName, allKeys, outputKey, format = 'hls', retryCount = 0) {
   console.log(`[FFmpeg] Processing ${allKeys.length} clips to s3://${bucketName}/${outputKey}`);
 
   const payload = {
-    bucket : bucketName,
+    inputBucket: bucketName,
     inputKeys: allKeys,
+    outputBucket : bucketName,
     outputKey,
-    format
+    format,
+    webhookUrl : "https://arythmatic-backend-api-271386434829.us-central1.run.app/api/v1/webhooks/hls-processing/",
+    qualities : ["1080p"],
+    meeting: "true"
   };
 
   try {
@@ -203,41 +205,38 @@ async function callProcessingAPI(bucketName, allKeys, outputKey, format = 'hls',
 
     const result = await response.json();
     console.log('[FFmpeg] Job submitted successfully');
-    
+
     return result;
   } catch (error) {
     console.error('[FFmpeg] API call failed:', error.message);
-    
+
     // Check if it's a 401 error (missing/invalid API key) and we haven't retried yet
     if ((error.response?.status === 401 || error.message.includes('API key missing')) && retryCount === 0) {
       console.log('[FFmpeg] Attempting to regenerate API key and retry...');
-      
+
       try {
         await regenerateApiKeyAndRetry();
-        
+
         // Retry the API call with the new key
         console.log('[FFmpeg] Retrying with new API key...');
         return await callProcessingAPI(bucketName, allKeys, outputKey, format, retryCount + 1);
-        
+
       } catch (regenerateError) {
         console.error('[FFmpeg] Failed to regenerate API key:', regenerateError.message);
         throw new Error(`API key regeneration failed: ${regenerateError.message}`);
       }
     }
-    
+
     throw error;
   }
 }
 
-async function createProcessingJob( bucket, inputClips, outputPrefix) {
-  // Prepare all clip keys
+async function createProcessingJob(bucket, inputClips, outputPrefix) {
   const allKeys = inputClips.map(clip => clip.Key);
-  
-  // Output configuration
-  const outputKey = outputPrefix;
-  const format = 'hls'; 
 
-  // Call FFmpeg API
+  const outputKey = outputPrefix;
+  const format = 'hls';
+
   const result = await callProcessingAPI(bucket, allKeys, outputKey, format);
 
   return {
@@ -248,7 +247,6 @@ async function createProcessingJob( bucket, inputClips, outputPrefix) {
   };
 }
 
-// Main handler
 exports.handler = async (event) => {
   console.log('Lambda invoked with event:', JSON.stringify(event, null, 2));
 
@@ -268,10 +266,10 @@ exports.handler = async (event) => {
     const clips = await waitForStableClips(s3Bucket, inputPrefix);
 
     // Step 3: Create FFmpeg processing job
-    const outputPrefix = `${s3Prefix}/final-video`;
+    const outputPrefix = `${s3Prefix}/processed`;
     const result = await createProcessingJob(meetingId, s3Bucket, clips, outputPrefix);
     console.log(`[Lambda] Processing job created: ${result.jobId}`);
-    
+
     // Step 4: Update meeting record
     await updateMeetingHost(meetingId, {
       ...meetingData.host,
@@ -285,9 +283,9 @@ exports.handler = async (event) => {
         processStartedAt: new Date().toISOString()
       }
     });
-    
+
     console.log(`[Lambda] Successfully initiated FFmpeg processing for meeting ${meetingId}`);
-    
+
     return {
       statusCode: 200,
       body: JSON.stringify({
