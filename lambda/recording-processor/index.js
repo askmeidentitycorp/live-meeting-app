@@ -232,7 +232,8 @@ async function callProcessingAPI(bucketName, allKeys, outputKey, format = 'hls',
 }
 
 async function createProcessingJob(bucket, inputClips, outputPrefix) {
-  const allKeys = inputClips.map(clip => clip.Key);
+  console.log('INPUT CLIPS', inputClips);
+  const allKeys = inputClips?.map(clip => clip.Key);
 
   const outputKey = outputPrefix;
   const format = 'hls';
