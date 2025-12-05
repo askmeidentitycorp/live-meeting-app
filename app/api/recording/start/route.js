@@ -95,7 +95,6 @@ export async function POST(req) {
 
     const mediaPipelinesClient = getMediaPipelinesClient();
 
-    // Create media capture pipeline
     const command = new CreateMediaCapturePipelineCommand({
       SourceType: "ChimeSdkMeeting",
       SourceArn: `arn:aws:chime::${process.env.CHIME_ACCOUNT_ID}:meeting/${meetingId}`,

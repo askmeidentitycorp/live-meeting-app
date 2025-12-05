@@ -65,7 +65,6 @@ export async function POST(req) {
       );
     }
 
-    // Check if already processing
     if (recording.processingStatus === "PROCESSING" || recording.processingStatus === "INITIALIZING") {
       return Response.json({
         success: true,
@@ -74,7 +73,6 @@ export async function POST(req) {
       });
     }
 
-    // Update status to processing
     await updateMeetingHost(meetingId, {
       ...meetingData.host,
       recording: {
@@ -84,7 +82,6 @@ export async function POST(req) {
       }
     });
 
-    // Prepare Lambda payload
     const payload = {
       meetingId,
       userEmail: session.user.email,
@@ -96,7 +93,6 @@ export async function POST(req) {
       }
     };
 
-    // Get Lambda function name with fallback
     const lambdaFunctionName = (process.env.RECORDING_PROCESSOR_LAMBDA_NAME || 'recording-processor');
 
     if (!lambdaFunctionName) {

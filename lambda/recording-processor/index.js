@@ -197,16 +197,8 @@ async function callProcessingAPI(bucketName, allKeys, outputKey, format = 'hls',
       },
     });
 
-    if (!response.ok) {
-      const errorText = await response.data();
-      console.error('[FFmpeg] Error response:', errorText);
-      throw new Error(`FFmpeg API error (${response.status}): ${errorText}`);
-    }
-
-    const result = await response.json();
     console.log('[FFmpeg] Job submitted successfully');
-
-    return result;
+    return response.data;
   } catch (error) {
     console.error('[FFmpeg] API call failed:', error.message);
 
@@ -268,7 +260,7 @@ exports.handler = async (event) => {
 
     // Step 3: Create FFmpeg processing job
     const outputPrefix = `${s3Prefix}/processed`;
-    const result = await createProcessingJob(meetingId, s3Bucket, clips, outputPrefix);
+    const result = await createProcessingJob(s3Bucket, clips, outputPrefix);
     console.log(`[Lambda] Processing job created: ${result.jobId}`);
 
     // Step 4: Update meeting record
