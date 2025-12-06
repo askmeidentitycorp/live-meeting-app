@@ -5,8 +5,14 @@ export const authOptions = {
   providers: [
     Auth0Provider({
       clientId: process.env.NEXT_PUBLIC_AUTH0_CLIENT_ID || "",
-      clientSecret: process.env.AUTH0_CLIENT_SECRET || "",
+      clientSecret: 'org_22Hl2nHlsUSF4gZU',
       issuer: `https://${process.env.NEXT_PUBLIC_AUTH0_DOMAIN}`,
+      authorization: {
+        params: {
+          organization: process.env.NEXT_PUBLIC_AUTH0_ORGANIZATION_ID,
+          scope: "openid profile email",
+        },
+      },
     }),
   ],
   secret: process.env.NEXTAUTH_SECRET,
